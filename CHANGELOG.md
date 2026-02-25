@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.5...v0.1.6) (2026-02-25)
+
+### 🐛 Bug Fixes
+
+* **security:** add S3 AES-256 encryption, suppress ECR mutable-tag finding ([7843dcc](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/7843dcc376f26ab378bda0e5000efe70ecbf7308))
+
 ## [0.1.5](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.4...v0.1.5) (2026-02-25)
 
 ### 🐛 Bug Fixes
