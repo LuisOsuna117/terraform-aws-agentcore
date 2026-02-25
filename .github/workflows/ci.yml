@@ -101,6 +101,8 @@ jobs:
 
       - name: Run Trivy (IaC)
         uses: aquasecurity/trivy-action@0.30.0
+        env:
+          TRIVY_SKIP_CHECK_UPDATE: "true"
         with:
           scan-type: config
           scan-ref: .
