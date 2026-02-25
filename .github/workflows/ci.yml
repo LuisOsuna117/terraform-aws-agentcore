@@ -99,27 +99,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy (IaC) — show findings
+      - name: Run Trivy (IaC)
         uses: aquasecurity/trivy-action@0.30.0
         env:
           TRIVY_SKIP_CHECK_UPDATE: "true"
         with:
           scan-type: config
           scan-ref: .
-          exit-code: "0"           # never fails — diagnostic only
+          exit-code: "1"           # fail the job if CRITICAL/HIGH findings exist
           severity: CRITICAL,HIGH
           format: table
           trivy-config: trivy.yaml
           trivyignores: .trivyignore
 
-      - name: Run Trivy (IaC) — enforce and emit SARIF
+      - name: Run Trivy (IaC) — emit SARIF
+        if: always()
         uses: aquasecurity/trivy-action@0.30.0
         env:
           TRIVY_SKIP_CHECK_UPDATE: "true"
         with:
           scan-type: config
           scan-ref: .
-          exit-code: "1"
+          exit-code: "0"           # never block — SARIF upload is informational
           severity: CRITICAL,HIGH
           format: sarif
           output: trivy-results.sarif
