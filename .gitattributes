@@ -1,0 +1,34 @@
+# Normalize line endings to LF for all text files
+* text=auto eol=lf
+
+# Terraform / OpenTofu
+*.tf        text eol=lf
+*.tfvars    text eol=lf
+*.hcl       text eol=lf
+
+# Shell scripts — must be LF or they break on Linux runners / containers
+*.sh        text eol=lf
+
+# YAML / JSON / TOML
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+
+# Markdown and docs
+*.md        text eol=lf
+*.txt       text eol=lf
+
+# Python
+*.py        text eol=lf
+
+# Dockerfile
+Dockerfile  text eol=lf
+
+# Binary files — never mangle
+*.png       binary
+*.jpg       binary
+*.gif       binary
+*.zip       binary
+*.gz        binary
+*.tar       binary

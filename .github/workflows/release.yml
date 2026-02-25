@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Only one release job runs at a time; extras are queued, not cancelled.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write         # create tags and releases
+  issues: write           # close issues referenced in commits
+  pull-requests: write    # comment on PRs included in each release
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+
+    # Skip the automated commit that semantic-release pushes back to main
+    # (it sets the commit message to "chore(release): ... [skip ci]").
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history for commit-analyzer
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Install semantic-release and plugins
+        run: |
+          npm install --no-save \
+            semantic-release \
+            "@semantic-release/changelog" \
+            "@semantic-release/git" \
+            "@semantic-release/github" \
+            conventional-changelog-conventionalcommits
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release

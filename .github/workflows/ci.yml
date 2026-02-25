@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. Format
+  # ----------------------------------------------------------------------------
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+
+      - name: Check formatting
+        run: tofu fmt -check -recursive -diff
+
+  # ----------------------------------------------------------------------------
+  # 2. Validate (root module + examples)
+  # ----------------------------------------------------------------------------
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+
+      - name: Init root module
+        run: tofu init -backend=false
+
+      - name: Validate root module
+        run: tofu validate
+
+      - name: Init examples/basic
+        working-directory: examples/basic
+        run: tofu init -backend=false
+
+      - name: Validate examples/basic
+        working-directory: examples/basic
+        run: tofu validate
+
+  # ----------------------------------------------------------------------------
+  # 3. Lint (TFLint)
+  # ----------------------------------------------------------------------------
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Init TFLint
+        run: tflint --init
+
+      - name: Lint root module
+        run: tflint --config .tflint.hcl
+
+      - name: Lint examples/basic
+        working-directory: examples/basic
+        run: tflint --config ../../.tflint.hcl
+
+  # ----------------------------------------------------------------------------
+  # 4. Security scan (Trivy)
+  # ----------------------------------------------------------------------------
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to GitHub Code Scanning
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy (IaC)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ----------------------------------------------------------------------------
+  # 5. Docs drift check
+  # ----------------------------------------------------------------------------
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # terraform-docs needs write-access to check diff; grant fetch only.
+          ref: ${{ github.head_ref }}
+
+      - name: Check terraform-docs drift
+        uses: terraform-docs/gh-actions@v1
+        with:
+          working-dir: .
+          output-file: README.md
+          output-method: inject
+          git-push: "false"
+          fail-on-diff: "true"
+          args: --lockfile=false
