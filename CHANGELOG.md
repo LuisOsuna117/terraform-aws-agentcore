@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.3...v0.1.4) (2026-02-25)
+
+### 🐛 Bug Fixes
+
+* **ci:** add Trivy table-format step to surface unsuppressed findings ([024da07](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/024da07baf0d3796438e6af630cd2649c8cc9bc7))
+* **ci:** suppress CodeBuild privileged_mode finding (AVD-AWS-0008) ([92fe11c](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/92fe11c76146480534b6f22d89ce996f388a2087))
+
 ## [0.1.3](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.2...v0.1.3) (2026-02-25)
 
 ### 🐛 Bug Fixes
