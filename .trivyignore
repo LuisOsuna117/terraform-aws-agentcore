@@ -34,3 +34,9 @@ AVD-AWS-0030
 # directly to ECR).  The NO_ARTIFACTS setting means there is no artifact
 # encryption surface.  The ECR push is encrypted in transit by TLS.
 AVD-AWS-0019
+
+# CodeBuild — privileged mode
+# privileged_mode = true is required to run the Docker daemon inside the
+# build container so it can execute `docker build` and `docker push`.
+# There is no alternative for container image build pipelines.
+AVD-AWS-0008
