@@ -1,0 +1,36 @@
+# .trivyignore — Trivy IaC scan suppressions for terraform-aws-agentcore
+#
+# Each suppression documents WHY it is accepted for a reusable Terraform module.
+# Callers can override these defaults and add their own controls.
+# Review this file when upgrading the module's defaults.
+#
+# Format: <AVD-ID> [exp:<YYYY-MM-DD>] [<comment>]
+
+# S3 — access logging
+# Callers are responsible for configuring server-access logging on the source
+# bucket.  Enabling it inside the module would require a second bucket and
+# additional permissions that most callers will want to control themselves.
+AVD-AWS-0089
+
+# S3 / ECR — AWS-managed vs. customer-managed KMS encryption
+# Both resources are encrypted at rest using AWS-managed keys (SSE-S3 / AES-256).
+# Requiring a CMK would force callers to create and manage a KMS key, which is
+# disproportionate for the agent-source zip bucket and ECR images.
+# Callers that require CMK encryption can pass an existing bucket/repo via the
+# BYO-role escape hatch and manage encryption outside this module.
+AVD-AWS-0132
+AVD-AWS-0011
+
+# IAM — wildcard Bedrock resource in the inline policy
+# The execution role grants bedrock:InvokeModel on "*" by default so the agent
+# can call any foundation model.  Callers should narrow this using
+# additional_iam_statements and attach_bedrock_fullaccess_policy = false.
+# The README documents this pattern explicitly.
+AVD-AWS-0057
+AVD-AWS-0030
+
+# CodeBuild — artifact / cache encryption
+# This CodeBuild project produces no stored artifacts (the image is pushed
+# directly to ECR).  The NO_ARTIFACTS setting means there is no artifact
+# encryption surface.  The ECR push is encrypted in transit by TLS.
+AVD-AWS-0019

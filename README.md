@@ -49,14 +49,103 @@ A Terraform / OpenTofu module that provisions an [Amazon Bedrock AgentCore](http
 
 ---
 
+<!-- BEGIN_TF_DOCS -->
 ## Requirements
 
-| Requirement | Version |
-|---|---|
-| [Terraform](https://www.terraform.io/) or [OpenTofu](https://opentofu.org/) | `>= 1.8` |
-| [hashicorp/aws](https://registry.terraform.io/providers/hashicorp/aws/latest) | `>= 6.21` |
-| [hashicorp/archive](https://registry.terraform.io/providers/hashicorp/archive/latest) | `>= 2.0` |
-| [hashicorp/null](https://registry.terraform.io/providers/hashicorp/null/latest) | `>= 3.0` |
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.8 |
+| <a name="requirement_archive"></a> [archive](#requirement\_archive) | >= 2.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.21 |
+| <a name="requirement_null"></a> [null](#requirement\_null) | >= 3.0 |
+
+## Providers
+
+| Name | Version |
+|------|---------|
+| <a name="provider_archive"></a> [archive](#provider\_archive) | >= 2.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.21 |
+| <a name="provider_null"></a> [null](#provider\_null) | >= 3.0 |
+
+## Modules
+
+No modules.
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [aws_bedrockagentcore_agent_runtime.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_agent_runtime) | resource |
+| [aws_codebuild_project.agent_image](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project) | resource |
+| [aws_ecr_lifecycle_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_lifecycle_policy) | resource |
+| [aws_ecr_repository.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_repository) | resource |
+| [aws_ecr_repository_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_repository_policy) | resource |
+| [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role.image_build](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.image_build](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy_attachment.agent_execution_managed](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_s3_bucket.agent_source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
+| [aws_s3_bucket_public_access_block.agent_source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block) | resource |
+| [aws_s3_bucket_versioning.agent_source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
+| [aws_s3_object.agent_source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_object) | resource |
+| [null_resource.trigger_build](https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource) | resource |
+| [archive_file.agent_source](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) | data source |
+| [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
+| [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_additional_iam_statements"></a> [additional\_iam\_statements](#input\_additional\_iam\_statements) | Additional IAM policy statements to append to the inline policy on the execution role. Use this to grant access to Bedrock models, Secrets Manager, or other services your agent code requires. | `list(any)` | `[]` | no |
+| <a name="input_agent_source_dir"></a> [agent\_source\_dir](#input\_agent\_source\_dir) | Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume. | `string` | `null` | no |
+| <a name="input_attach_bedrock_fullaccess_policy"></a> [attach\_bedrock\_fullaccess\_policy](#input\_attach\_bedrock\_fullaccess\_policy) | When true and create\_execution\_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional\_iam\_statements. | `bool` | `true` | no |
+| <a name="input_codebuild_build_timeout"></a> [codebuild\_build\_timeout](#input\_codebuild\_build\_timeout) | Maximum duration (in minutes) for a CodeBuild build before it is terminated. | `number` | `60` | no |
+| <a name="input_codebuild_compute_type"></a> [codebuild\_compute\_type](#input\_codebuild\_compute\_type) | Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html | `string` | `"BUILD_GENERAL1_LARGE"` | no |
+| <a name="input_codebuild_environment_image"></a> [codebuild\_environment\_image](#input\_codebuild\_environment\_image) | Docker image used for the CodeBuild build environment. | `string` | `"aws/codebuild/amazonlinux2-aarch64-standard:3.0"` | no |
+| <a name="input_codebuild_environment_type"></a> [codebuild\_environment\_type](#input\_codebuild\_environment\_type) | CodeBuild environment type. Should match the architecture of codebuild\_environment\_image (e.g. ARM\_CONTAINER for aarch64 images). | `string` | `"ARM_CONTAINER"` | no |
+| <a name="input_create_execution_role"></a> [create\_execution\_role](#input\_create\_execution\_role) | When true, the module creates an IAM execution role for the AgentCore runtime. Set to false to provide an existing role via execution\_role\_arn. | `bool` | `true` | no |
+| <a name="input_description"></a> [description](#input\_description) | Human-readable description attached to the AgentCore runtime resource. | `string` | `"Managed by terraform-aws-agentcore."` | no |
+| <a name="input_ecr_force_delete"></a> [ecr\_force\_delete](#input\_ecr\_force\_delete) | Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
+| <a name="input_ecr_image_tag_mutability"></a> [ecr\_image\_tag\_mutability](#input\_ecr\_image\_tag\_mutability) | Tag mutability setting for the ECR repository. IMMUTABLE is recommended for production to prevent image overwrites. | `string` | `"MUTABLE"` | no |
+| <a name="input_ecr_lifecycle_keep_count"></a> [ecr\_lifecycle\_keep\_count](#input\_ecr\_lifecycle\_keep\_count) | Number of most-recent images to retain in the ECR repository. Older images are expired automatically. | `number` | `10` | no |
+| <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
+| <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
+| <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set automatically. | `map(string)` | `{}` | no |
+| <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_execution\_role = false. | `string` | `null` | no |
+| <a name="input_image_tag"></a> [image\_tag](#input\_image\_tag) | Docker image tag to deploy to the AgentCore runtime. Changing this triggers a new CodeBuild run. | `string` | `"latest"` | no |
+| <a name="input_name"></a> [name](#input\_name) | Base name used as a prefix for all resources created by this module (e.g. "my-agent"). Must start with a letter, max 32 characters. | `string` | n/a | yes |
+| <a name="input_network_mode"></a> [network\_mode](#input\_network\_mode) | Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint on the public internet; PRIVATE keeps it internal to your VPC. | `string` | `"PUBLIC"` | no |
+| <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API. | `string` | `null` | no |
+| <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. |
+| <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. |
+| <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. |
+| <a name="output_agent_runtime_network_mode"></a> [agent\_runtime\_network\_mode](#output\_agent\_runtime\_network\_mode) | Network mode of the runtime (PUBLIC or PRIVATE). |
+| <a name="output_agent_runtime_version"></a> [agent\_runtime\_version](#output\_agent\_runtime\_version) | Version identifier of the deployed AgentCore runtime. |
+| <a name="output_codebuild_project_arn"></a> [codebuild\_project\_arn](#output\_codebuild\_project\_arn) | ARN of the CodeBuild project. |
+| <a name="output_codebuild_project_name"></a> [codebuild\_project\_name](#output\_codebuild\_project\_name) | Name of the CodeBuild project used to build and push the agent image. |
+| <a name="output_codebuild_role_arn"></a> [codebuild\_role\_arn](#output\_codebuild\_role\_arn) | ARN of the IAM role used by the CodeBuild image-build project. |
+| <a name="output_container_image_uri"></a> [container\_image\_uri](#output\_container\_image\_uri) | Full container image URI (repository URL + tag) deployed to the runtime. |
+| <a name="output_ecr_repository_arn"></a> [ecr\_repository\_arn](#output\_ecr\_repository\_arn) | ARN of the ECR repository. |
+| <a name="output_ecr_repository_name"></a> [ecr\_repository\_name](#output\_ecr\_repository\_name) | Name of the ECR repository as registered in the AWS account. |
+| <a name="output_ecr_repository_url"></a> [ecr\_repository\_url](#output\_ecr\_repository\_url) | Full ECR repository URL (without tag). Use as the base for docker push/pull commands. |
+| <a name="output_execution_role_arn"></a> [execution\_role\_arn](#output\_execution\_role\_arn) | ARN of the IAM role used by the AgentCore runtime. Will equal var.execution\_role\_arn when create\_execution\_role = false. |
+| <a name="output_execution_role_name"></a> [execution\_role\_name](#output\_execution\_role\_name) | Name of the module-created execution role. Empty string when create\_execution\_role = false. |
+| <a name="output_source_bucket_arn"></a> [source\_bucket\_arn](#output\_source\_bucket\_arn) | ARN of the S3 source bucket. |
+| <a name="output_source_bucket_name"></a> [source\_bucket\_name](#output\_source\_bucket\_name) | Name of the S3 bucket holding the agent source code archive. |
+| <a name="output_source_code_md5"></a> [source\_code\_md5](#output\_source\_code\_md5) | MD5 hash of the agent source code archive. Changes when source files change and triggers a new CodeBuild run. |
+| <a name="output_source_object_key"></a> [source\_object\_key](#output\_source\_object\_key) | S3 object key for the currently uploaded agent source code archive. |
+<!-- END_TF_DOCS -->
+
+---
 
 **Local runtime dependencies** (on the machine running `terraform apply` / `tofu apply`):
 
@@ -170,109 +259,6 @@ module "agentcore" {
 
 ---
 
-## Inputs
-
-### Core
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `name` | Base name prefix for all resources. Must start with a letter; max 32 characters; letters, numbers, and hyphens only. | `string` | — | **yes** |
-| `runtime_name` | Override for the AgentCore runtime resource name. Hyphens are converted to underscores. Defaults to `name`. | `string` | `null` | no |
-| `description` | Description attached to the AgentCore runtime resource. | `string` | `"Managed by terraform-aws-agentcore."` | no |
-| `tags` | Tags merged onto all taggable resources alongside module-level defaults. | `map(string)` | `{}` | no |
-
-### Runtime
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `network_mode` | Network mode: `PUBLIC` or `PRIVATE`. | `string` | `"PUBLIC"` | no |
-| `image_tag` | Docker image tag deployed to the runtime. Changing this triggers a new CodeBuild run. | `string` | `"latest"` | no |
-| `environment_variables` | Extra environment variables injected into the runtime. `AWS_REGION` and `AWS_DEFAULT_REGION` are always set. | `map(string)` | `{}` | no |
-
-### IAM
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `create_execution_role` | Create an execution IAM role for the runtime. Set `false` to supply an existing role via `execution_role_arn`. | `bool` | `true` | no |
-| `execution_role_arn` | ARN of an existing execution role. Required when `create_execution_role = false`. | `string` | `null` | no |
-| `attach_bedrock_fullaccess_policy` | Attach the `BedrockAgentCoreFullAccess` AWS-managed policy to the execution role. Set `false` for a tighter posture. | `bool` | `true` | no |
-| `additional_iam_statements` | Extra IAM policy statements appended to the execution role's inline policy. | `list(any)` | `[]` | no |
-
-### ECR
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `ecr_repository_name` | ECR repository name. Defaults to `name`. | `string` | `null` | no |
-| `ecr_image_tag_mutability` | Tag mutability: `MUTABLE` or `IMMUTABLE`. Prefer `IMMUTABLE` in production. | `string` | `"MUTABLE"` | no |
-| `ecr_scan_on_push` | Enable automatic vulnerability scanning on image push. | `bool` | `true` | no |
-| `ecr_lifecycle_keep_count` | Number of most-recent images to retain; older images are expired. | `number` | `10` | no |
-| `ecr_force_delete` | Delete the repository even if it contains images. Useful for non-production teardown. | `bool` | `false` | no |
-
-### S3 / Source
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `agent_source_dir` | Path to the agent application code directory. Must contain a `Dockerfile`. Defaults to `<module>/agent-code`. | `string` | `null` | no |
-| `source_bucket_force_destroy` | Destroy the source S3 bucket even when it still contains objects. | `bool` | `false` | no |
-
-### CodeBuild
-
-| Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
-| `codebuild_compute_type` | CodeBuild [compute type](https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html). | `string` | `"BUILD_GENERAL1_LARGE"` | no |
-| `codebuild_environment_image` | Docker image for the CodeBuild build environment. | `string` | `"aws/codebuild/amazonlinux2-aarch64-standard:3.0"` | no |
-| `codebuild_environment_type` | CodeBuild environment type. Must match the architecture of `codebuild_environment_image`. | `string` | `"ARM_CONTAINER"` | no |
-| `codebuild_build_timeout` | Maximum build duration in minutes. Valid range: 5–480. | `number` | `60` | no |
-
----
-
-## Outputs
-
-### Runtime
-
-| Name | Description |
-|---|---|
-| `agent_runtime_id` | ID of the AgentCore runtime resource. |
-| `agent_runtime_arn` | ARN of the runtime. Use this to grant invoke permissions to callers. |
-| `agent_runtime_name` | Resolved runtime name as registered with the AgentCore API. |
-| `agent_runtime_version` | Version identifier of the deployed runtime. |
-| `agent_runtime_network_mode` | Network mode of the runtime (`PUBLIC` or `PRIVATE`). |
-
-### IAM
-
-| Name | Description |
-|---|---|
-| `execution_role_arn` | ARN of the execution role (module-created or caller-supplied). |
-| `execution_role_name` | Name of the module-created execution role. Empty string when `create_execution_role = false`. |
-| `codebuild_role_arn` | ARN of the CodeBuild service role. |
-
-### ECR
-
-| Name | Description |
-|---|---|
-| `ecr_repository_url` | Full ECR repository URL (without tag). Base URL for `docker push`/`pull`. |
-| `ecr_repository_arn` | ARN of the ECR repository. |
-| `ecr_repository_name` | Name of the ECR repository. |
-| `container_image_uri` | Full image URI (`repository_url:image_tag`) deployed to the runtime. |
-
-### CodeBuild
-
-| Name | Description |
-|---|---|
-| `codebuild_project_name` | Name of the CodeBuild build project. |
-| `codebuild_project_arn` | ARN of the CodeBuild build project. |
-
-### S3
-
-| Name | Description |
-|---|---|
-| `source_bucket_name` | Name of the S3 source bucket. |
-| `source_bucket_arn` | ARN of the S3 source bucket. |
-| `source_object_key` | S3 key of the currently active source archive. |
-| `source_code_md5` | MD5 of the source archive. Changes automatically trigger a CodeBuild rebuild. |
-
----
-
 ## Notes and limitations
 
 ### Agent source code
@@ -324,4 +310,4 @@ This is a community module authored and maintained by [LuisOsuna117](https://git
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
