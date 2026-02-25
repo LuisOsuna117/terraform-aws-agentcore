@@ -108,7 +108,7 @@ jobs:
           severity: CRITICAL,HIGH
           format: sarif
           output: trivy-results.sarif
-          trivy-version: "v0.59.1"
+          trivy-config: trivy.yaml
           trivyignores: .trivyignore
 
       - name: Upload SARIF to GitHub Code Scanning

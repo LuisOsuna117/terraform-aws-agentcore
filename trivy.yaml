@@ -1,0 +1,9 @@
+# trivy.yaml — configuration for `trivy config` IaC scans
+# https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+# Do not download the external check bundle at scan time.
+# The embedded checks are stable; the downloaded bundle has known Rego parse
+# errors in the aws/ec2/specify_ami_owners.rego rule that cause noisy ERROR
+# log lines on every run.
+check-update: false
+skip-check-update: true
