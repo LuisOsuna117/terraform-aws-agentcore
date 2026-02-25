@@ -40,3 +40,9 @@ AVD-AWS-0019
 # build container so it can execute `docker build` and `docker push`.
 # There is no alternative for container image build pipelines.
 AVD-AWS-0008
+
+# ECR — mutable image tags
+# The module defaults to MUTABLE to allow iterative development (e.g. a
+# rolling `latest` tag).  Callers should set ecr_image_tag_mutability =
+# "IMMUTABLE" in production.  The README and examples document this pattern.
+AVD-AWS-0031
