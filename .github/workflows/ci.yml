@@ -99,7 +99,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy (IaC)
+      - name: Run Trivy (IaC) — show findings
+        uses: aquasecurity/trivy-action@0.30.0
+        env:
+          TRIVY_SKIP_CHECK_UPDATE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: "0"           # never fails — diagnostic only
+          severity: CRITICAL,HIGH
+          format: table
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore
+
+      - name: Run Trivy (IaC) — enforce and emit SARIF
         uses: aquasecurity/trivy-action@0.30.0
         env:
           TRIVY_SKIP_CHECK_UPDATE: "true"
