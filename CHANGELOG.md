@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.2...v0.1.3) (2026-02-25)
+
+### 🐛 Bug Fixes
+
+* **ci:** use TRIVY_SKIP_CHECK_UPDATE env var to suppress policy download ([36a6054](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/36a6054dd6644b379b85d6971341b7ad18765a1c))
+
 ## [0.1.2](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.1...v0.1.2) (2026-02-25)
 
 ### 🐛 Bug Fixes
