@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.4...v0.1.5) (2026-02-25)
+
+### 🐛 Bug Fixes
+
+* **ci:** separate Trivy table gate from SARIF upload, fix exit-code-1 on empty SARIF ([a9bf595](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/a9bf5959681d7a4a3030d8570c61c911a07b7ca4))
+
 ## [0.1.4](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.3...v0.1.4) (2026-02-25)
 
 ### 🐛 Bug Fixes
