@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.0...v0.4.1) (2026-02-27)
+
+### 📖 Documentation
+
+* polish README — fix emoji glitches, clarify BYO note, improve table, add Windows/CI callout ([6e5db49](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/6e5db49e98136a6ccced45397f12b72fb359f34c))
+
 ## [0.4.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.3.1...v0.4.0) (2026-02-27)
 
 ### 🚀 Features
