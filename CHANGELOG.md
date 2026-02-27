@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.6...v0.1.7) (2026-02-27)
+
+### 🐛 Bug Fixes
+
+* **iam:** split CloudWatch Logs statements to fix log stream permissions ([b16f513](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/b16f5139371d8f4ee2f453da56888894acdd5d16))
+
 ## [0.1.6](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.5...v0.1.6) (2026-02-25)
 
 ### 🐛 Bug Fixes
