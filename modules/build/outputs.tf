@@ -55,3 +55,12 @@ output "source_bucket_arn" {
   description = "ARN of the S3 source bucket."
   value       = aws_s3_bucket.agent_source.arn
 }
+
+# ==============================================================================
+# Operational helpers
+# ==============================================================================
+
+output "codebuild_start_build_command" {
+  description = "AWS CLI command to trigger a build manually. Useful for CI pipelines when trigger_build_on_apply = false."
+  value       = "aws codebuild start-build --project-name ${aws_codebuild_project.agent_image.name} --region ${data.aws_region.current.id}"
+}

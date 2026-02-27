@@ -5,6 +5,14 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+locals {
+  # When the caller supplies no explicit pull principals, default to the current
+  # account root — identical to the previous hardcoded behaviour.
+  effective_ecr_pull_principals = length(var.ecr_pull_principals) > 0 ? var.ecr_pull_principals : [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root",
+  ]
+}
+
 # ==============================================================================
 # ECR Repository — Agent Container Registry
 # ==============================================================================
@@ -24,17 +32,17 @@ resource "aws_ecr_repository" "this" {
   })
 }
 
-# Repository policy — allow any principal in the same account to pull images.
+# Repository policy — allow the configured principals to pull images.
 resource "aws_ecr_repository_policy" "this" {
   repository = aws_ecr_repository.this.name
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "AllowAccountPull"
+      Sid    = "AllowPull"
       Effect = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        AWS = local.effective_ecr_pull_principals
       }
       Action = [
         "ecr:BatchGetImage",

@@ -79,6 +79,7 @@ module "build" {
   ecr_scan_on_push         = var.ecr_scan_on_push
   ecr_lifecycle_keep_count = var.ecr_lifecycle_keep_count
   ecr_force_delete         = var.ecr_force_delete
+  ecr_pull_principals      = var.ecr_pull_principals
 
   # S3
   agent_source_dir            = local.agent_source_dir
@@ -304,7 +305,11 @@ resource "aws_iam_role_policy" "agent_execution" {
             }
           }
         },
-        # Bedrock model invocation
+        # Bedrock model invocation — included by default.
+        # Set allow_bedrock_invoke_all = false and supply scoped statements via
+        # additional_iam_statements for a least-privilege production posture.
+      ],
+      var.allow_bedrock_invoke_all ? [
         {
           Sid    = "BedrockModelInvocation"
           Effect = "Allow"
@@ -314,7 +319,8 @@ resource "aws_iam_role_policy" "agent_execution" {
           ]
           Resource = "*"
         },
-        # Workload access tokens (agent-to-agent identity)
+      ] : [],
+      [
         {
           Sid    = "WorkloadAccessTokens"
           Effect = "Allow"

@@ -94,6 +94,11 @@ output "codebuild_project_arn" {
   value       = var.create_build_pipeline ? module.build[0].codebuild_project_arn : null
 }
 
+output "codebuild_start_build_command" {
+  description = "AWS CLI command to trigger a CodeBuild build manually. Copy-paste into your CI pipeline when trigger_build_on_apply = false. Null when create_build_pipeline = false."
+  value       = var.create_build_pipeline ? module.build[0].codebuild_start_build_command : null
+}
+
 # ==============================================================================
 # S3 — Source Bucket (create_build_pipeline = true only)
 # ==============================================================================

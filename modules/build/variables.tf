@@ -46,6 +46,17 @@ variable "ecr_force_delete" {
   default     = false
 }
 
+variable "ecr_pull_principals" {
+  description = "List of IAM principal ARNs allowed to pull images from the ECR repository. When empty (default), only the current account root is allowed, preserving the previous behaviour. Extend this list to enable cross-account or cross-org pulls."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.ecr_pull_principals : can(regex("^arn:aws[^:]*:", p))])
+    error_message = "Each entry in ecr_pull_principals must be a valid ARN starting with arn:aws."
+  }
+}
+
 # ==============================================================================
 # S3 — Agent Source
 # ==============================================================================

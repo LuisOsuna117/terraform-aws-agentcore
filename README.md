@@ -128,6 +128,7 @@ Resources marked with a condition are only created when the corresponding flag i
 |------|-------------|------|---------|:--------:|
 | <a name="input_additional_iam_statements"></a> [additional\_iam\_statements](#input\_additional\_iam\_statements) | Additional IAM policy statements to append to the inline policy on the execution role. Use this to grant access to Bedrock models, Secrets Manager, or other services your agent code requires. | `list(any)` | `[]` | no |
 | <a name="input_agent_source_dir"></a> [agent\_source\_dir](#input\_agent\_source\_dir) | Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume. | `string` | `null` | no |
+| <a name="input_allow_bedrock_invoke_all"></a> [allow\_bedrock\_invoke\_all](#input\_allow\_bedrock\_invoke\_all) | When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource "*". Set to false to remove this broad statement and supply model-specific permissions via additional\_iam\_statements (recommended for production). | `bool` | `true` | no |
 | <a name="input_attach_bedrock_fullaccess_policy"></a> [attach\_bedrock\_fullaccess\_policy](#input\_attach\_bedrock\_fullaccess\_policy) | When true and create\_execution\_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional\_iam\_statements. | `bool` | `true` | no |
 | <a name="input_codebuild_build_timeout"></a> [codebuild\_build\_timeout](#input\_codebuild\_build\_timeout) | Maximum duration (in minutes) for a CodeBuild build before it is terminated. | `number` | `60` | no |
 | <a name="input_codebuild_compute_type"></a> [codebuild\_compute\_type](#input\_codebuild\_compute\_type) | Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html | `string` | `"BUILD_GENERAL1_LARGE"` | no |
@@ -142,6 +143,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_ecr_force_delete"></a> [ecr\_force\_delete](#input\_ecr\_force\_delete) | Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
 | <a name="input_ecr_image_tag_mutability"></a> [ecr\_image\_tag\_mutability](#input\_ecr\_image\_tag\_mutability) | Tag mutability setting for the ECR repository. IMMUTABLE is recommended for production to prevent image overwrites. | `string` | `"MUTABLE"` | no |
 | <a name="input_ecr_lifecycle_keep_count"></a> [ecr\_lifecycle\_keep\_count](#input\_ecr\_lifecycle\_keep\_count) | Number of most-recent images to retain in the ECR repository. Older images are expired automatically. | `number` | `10` | no |
+| <a name="input_ecr_pull_principals"></a> [ecr\_pull\_principals](#input\_ecr\_pull\_principals) | List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account\_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls. | `list(string)` | `[]` | no |
 | <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set automatically. | `map(string)` | `{}` | no |
@@ -183,6 +185,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_codebuild_project_arn"></a> [codebuild\_project\_arn](#output\_codebuild\_project\_arn) | ARN of the CodeBuild project. Null when create\_build\_pipeline = false. |
 | <a name="output_codebuild_project_name"></a> [codebuild\_project\_name](#output\_codebuild\_project\_name) | Name of the CodeBuild project. Null when create\_build\_pipeline = false. |
 | <a name="output_codebuild_role_arn"></a> [codebuild\_role\_arn](#output\_codebuild\_role\_arn) | ARN of the IAM role used by the CodeBuild image-build project. Null when create\_build\_pipeline = false. |
+| <a name="output_codebuild_start_build_command"></a> [codebuild\_start\_build\_command](#output\_codebuild\_start\_build\_command) | AWS CLI command to trigger a CodeBuild build manually. Copy-paste into your CI pipeline when trigger\_build\_on\_apply = false. Null when create\_build\_pipeline = false. |
 | <a name="output_container_image_uri"></a> [container\_image\_uri](#output\_container\_image\_uri) | Alias for effective\_image\_uri. Kept for backwards compatibility. |
 | <a name="output_ecr_repository_arn"></a> [ecr\_repository\_arn](#output\_ecr\_repository\_arn) | ARN of the ECR repository. Null when create\_build\_pipeline = false. |
 | <a name="output_ecr_repository_name"></a> [ecr\_repository\_name](#output\_ecr\_repository\_name) | Name of the ECR repository. Null when create\_build\_pipeline = false. |
@@ -234,6 +237,8 @@ module "agentcore" {
 
 Place your agent code (including a `Dockerfile`) in `./agent-code/` relative to where you call the module, then run `terraform apply` (or `tofu apply`). The module zips the directory, uploads it to S3, triggers a CodeBuild build, and provisions the AgentCore runtime.
 
+> ⚠️ **Build trigger prerequisites** — when `trigger_build_on_apply = true` (the default), Terraform / OpenTofu shells out to `scripts/build-image.sh` via `local-exec`. The machine running `apply` must have **AWS CLI v2** installed and a **bash-compatible shell** (Linux, macOS, or WSL on Windows). Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your own CI/CD pipeline using the `codebuild_start_build_command` output.
+
 ### Bring Your Own Image
 
 Skip the build pipeline and deploy any container image you have already pushed:
@@ -265,10 +270,13 @@ module "agentcore" {
 }
 ```
 
-After apply, trigger a build manually:
+After apply, use the ready-made CLI command from the module output:
 
 ```bash
-aws codebuild start-build --project-name <codebuild_project_name>
+# Copy the exact command from the Terraform output:
+terraform output -raw codebuild_start_build_command | bash
+# Or construct it manually:
+aws codebuild start-build --project-name <codebuild_project_name> --region <region>
 ```
 
 ### Add a Memory store
@@ -377,6 +385,106 @@ module "agentcore" {
   create_execution_role = false
   execution_role_arn    = aws_iam_role.my_agent_role.arn
 }
+```
+
+---
+
+## 🏢 Enterprise patterns
+
+Common configurations for organisations with tighter security postures or multi-account architectures.
+
+### Least-privilege Bedrock access (disable the wildcard `InvokeModel`)
+
+By default the module includes a baseline `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` against `*` for ease of development. Disable it and grant access only to the specific models your agent calls:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "payments-agent"
+
+  # Remove the wildcard bedrock:InvokeModel statement from the baseline policy.
+  allow_bedrock_invoke_all = false
+
+  # Drop the broad managed policy too.
+  attach_bedrock_fullaccess_policy = false
+
+  # Grant access to exactly the models the agent needs.
+  additional_iam_statements = [
+    {
+      Sid    = "ClaudeAccess"
+      Effect = "Allow"
+      Action = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+      ]
+      Resource = [
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+      ]
+    },
+  ]
+}
+```
+
+### Cross-account ECR pulls
+
+Allow workloads in other AWS accounts to pull the agent image from the module-managed ECR repository:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "shared-agent"
+
+  # Grant pull access to specific principals in other accounts.
+  # When empty (default) only the current account root is allowed.
+  ecr_pull_principals = [
+    "arn:aws:iam::111111111111:root",                       # whole account
+    "arn:aws:iam::222222222222:role/ECSTaskExecutionRole",  # specific role
+  ]
+}
+```
+
+> **Note:** Cross-account callers must also authenticate with `ecr:GetAuthorizationToken` in the registry account before pulling. Use an IAM policy in the caller account combined with the repository policy set by `ecr_pull_principals`.
+
+### Bring your own execution role
+
+Use an IAM role you manage outside of this module — common in environments where IAM is centralised:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                  = "my-agent"
+  create_execution_role = false
+  execution_role_arn    = data.aws_iam_role.platform_agent_role.arn
+}
+```
+
+### Decouple builds from Terraform state
+
+Provision infrastructure with Terraform but manage image builds entirely from your CI/CD platform:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                   = "my-agent"
+  trigger_build_on_apply = false
+  ecr_image_tag_mutability = "IMMUTABLE"  # Enforce image immutability in CI
+}
+```
+
+Then trigger builds from CI using the module output:
+
+```bash
+# In your CI pipeline (GitHub Actions, GitLab CI, Jenkins, etc.)
+$(terraform output -raw codebuild_start_build_command)
 ```
 
 ---

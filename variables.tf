@@ -114,6 +114,12 @@ variable "additional_iam_statements" {
   default     = []
 }
 
+variable "allow_bedrock_invoke_all" {
+  description = "When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource \"*\". Set to false to remove this broad statement and supply model-specific permissions via additional_iam_statements (recommended for production)."
+  type        = bool
+  default     = true
+}
+
 # ==============================================================================
 # ECR
 # ==============================================================================
@@ -161,6 +167,17 @@ variable "ecr_force_delete" {
   description = "Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety."
   type        = bool
   default     = false
+}
+
+variable "ecr_pull_principals" {
+  description = "List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.ecr_pull_principals : can(regex("^arn:aws[^:]*:", p))])
+    error_message = "Each entry in ecr_pull_principals must be a valid ARN starting with arn:aws."
+  }
 }
 
 # ==============================================================================
