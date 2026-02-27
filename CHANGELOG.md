@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.3.1...v0.4.0) (2026-02-27)
+
+### 🚀 Features
+
+* allow_bedrock_invoke_all, ecr_pull_principals, codebuild_start_build_command; enterprise patterns in README ([f54e2d2](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/f54e2d242a25c430c2d6320822822ecf262a93d8))
+
 ## [0.3.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.3.0...v0.3.1) (2026-02-27)
 
 ### 📖 Documentation
