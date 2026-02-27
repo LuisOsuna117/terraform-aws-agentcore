@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.2.0...v0.3.0) (2026-02-27)
+
+### 🚀 Features
+
+* add modules/memory and modules/gateway, wire into root wrapper, consolidate root to 4 files, update README for v0.3.0 ([2eb8558](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/2eb85584719132f2856a3e12062bfe349696f4dd))
+
 ## [0.2.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.7...v0.2.0) (2026-02-27)
 
 ### 🚀 Features
