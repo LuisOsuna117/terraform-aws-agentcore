@@ -9,23 +9,38 @@ A Terraform / OpenTofu module that provisions [Amazon Bedrock AgentCore](https:/
 
 ---
 
-## Features
+## 🚀 Quickstart
 
-- **Single required variable** — only `name` is mandatory; every other input has a safe default.
-- **Bring Your Own Image (BYO)** — set `create_build_pipeline = false` and pass `image_uri` to skip the CodeBuild pipeline entirely.
-- **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
-- **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the runtime is not yet needed.
-- **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the runtime.
-- **Gateway resource** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway` with JWT or AWS IAM auth, MCP protocol, and optional Lambda interceptors.
-- **Execution role escape hatch** — bring your own IAM role or let the module create one.
-- **Extensible IAM** — append policy statements to the execution role via `additional_iam_statements` without touching the module source.
-- **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
-- **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
-- **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "my-agent"
+}
+```
+
+Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terraform apply` (or `tofu apply`). That's it.
 
 ---
 
-## Module structure
+## ✅ Features
+
+- ✅ **Single required variable** — only `name` is mandatory; every other input has a safe default.
+- 🐳 **Bring Your Own Image (BYO)** — set `create_build_pipeline = false` and pass `image_uri` to skip the CodeBuild pipeline entirely.
+- ⚙️ **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
+- 🛰️ **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the AgentCore runtime is not yet needed.
+- 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
+- 🌐 **Gateway resource** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway` with JWT or AWS IAM auth, MCP protocol, and optional Lambda interceptors (max 2, via `gateway_interceptor_configurations`).
+- 🔒 **Execution role escape hatch** — bring your own IAM role or let the module create one.
+- 🔒 **Extensible IAM** — append policy statements to the execution role via `additional_iam_statements` without touching the module source.
+- 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
+- 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
+- ✅ **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
+
+---
+
+## 🧱 Module structure
 
 ```
 .
@@ -44,7 +59,7 @@ Each submodule under `modules/` can also be called independently if you only nee
 
 ---
 
-## What this module creates
+## 🧩 What this module creates
 
 Resources marked with a condition are only created when the corresponding flag is `true`.
 
@@ -64,7 +79,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_bedrockagentcore_gateway` | `create_gateway` | MCP gateway endpoint with configurable auth and interceptors. |
 | `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
 
-## What this module does NOT create
+## 🚫 What this module does NOT create
 
 - **VPC, subnets, or security groups** — required when using `network_mode = "PRIVATE"`, but out of scope for this module.
 - **Bedrock model access** — enable foundation model access separately in the AWS console.
@@ -190,7 +205,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 ---
 
-## Examples
+## 🧪 Examples
 
 | Example | Description |
 |---|---|
@@ -200,7 +215,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 ---
 
-## Usage
+## 🧰 Usage
 
 ### Minimal (CodeBuild + runtime)
 
@@ -217,7 +232,7 @@ module "agentcore" {
 }
 ```
 
-Place your agent code (including a `Dockerfile`) in `./agent-code/` relative to where you call the module, then run `tofu apply`. The module zips the directory, uploads it to S3, triggers a CodeBuild build, and provisions the runtime.
+Place your agent code (including a `Dockerfile`) in `./agent-code/` relative to where you call the module, then run `terraform apply` (or `tofu apply`). The module zips the directory, uploads it to S3, triggers a CodeBuild build, and provisions the AgentCore runtime.
 
 ### Bring Your Own Image
 
@@ -233,6 +248,8 @@ module "agentcore" {
   image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 }
 ```
+
+> **Note:** When `create_build_pipeline = false`, no ECR repository, S3 bucket, or CodeBuild project is created. `image_uri` is passed to the AgentCore runtime as-is. Ensure the execution role has permission to pull from the target registry.
 
 ### Decouple builds from apply
 
@@ -364,9 +381,19 @@ module "agentcore" {
 
 ---
 
-## Notes and limitations
+## 🔒 Security notes
 
-### Agent source code
+- 🔒 **`BedrockAgentCoreFullAccess` is broad** — it is enabled by default for convenience. Set `attach_bedrock_fullaccess_policy = false` in production and grant only the actions your agent requires via `additional_iam_statements`.
+- 🔒 **Prefer least privilege** — scope `bedrock:InvokeModel` to specific model ARNs and `ecr:BatchGetImage` to specific repository ARNs rather than using `"Resource": "*"`.
+- 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
+- ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
+- 🌐 **Gateway interceptors are Lambda-backed** — each interceptor Lambda receives request or response payloads; apply appropriate resource-based policies and consider VPC isolation for sensitive workloads.
+
+---
+
+## 🧾 Notes and limitations
+
+### 🐳 Agent source code
 
 The module expects a `Dockerfile` at the root of the source directory. CodeBuild runs `docker build .` from that directory. Set `agent_source_dir` to point at your own code:
 
@@ -376,16 +403,16 @@ agent_source_dir = "${path.root}/src/my-agent"
 
 The archive is re-uploaded and CodeBuild is re-triggered automatically whenever any file in the directory changes, based on the MD5 hash of the zip.
 
-### Build trigger
+### ⚙️ Build trigger
 
 When `trigger_build_on_apply = true` (the default), the `modules/build` submodule uses a `null_resource` to call the bundled `scripts/build-image.sh` script via `local-exec`. This requires:
 
-- **AWS CLI v2** — must be available on the machine running `tofu apply` / `terraform apply`.
+- **AWS CLI v2** — must be available on the machine running `terraform apply` (or `tofu apply`).
 - **bash** — the build script requires a bash-compatible shell (Linux, macOS, WSL on Windows).
 
 Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your CI/CD pipeline instead.
 
-### ARM vs. x86
+### 🧰 ARM vs. x86
 
 The default CodeBuild image (`amazonlinux2-aarch64-standard:3.0`) and environment type (`ARM_CONTAINER`) produce ARM64 images. To build x86 images instead, override both variables:
 
@@ -395,7 +422,7 @@ codebuild_environment_type  = "LINUX_CONTAINER"
 codebuild_compute_type      = "BUILD_GENERAL1_LARGE"
 ```
 
-### IAM and `BedrockAgentCoreFullAccess`
+### 🔒 IAM and `BedrockAgentCoreFullAccess`
 
 The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements`.
 
@@ -408,11 +435,11 @@ The inline policy baseline grants:
 - `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` against `*` — narrow this via `additional_iam_statements` if needed
 - AgentCore workload access tokens
 
-### Provider version
+### 📦 Provider version
 
 The AgentCore resource types (`aws_bedrockagentcore_agent_runtime`, `aws_bedrockagentcore_memory`, `aws_bedrockagentcore_gateway`) were introduced in hashicorp/aws **v6.x**. The minimum tested version is **6.21**. AgentCore is a recently launched service; provider attributes may change in minor releases. Review the [AWS provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) before upgrading.
 
-### Using submodules independently
+### 🧩 Using submodules independently
 
 Each module under `modules/` is a self-contained Terraform module and can be called directly without going through the root wrapper:
 
@@ -431,6 +458,6 @@ This is a community module authored and maintained by [LuisOsuna117](https://git
 
 ---
 
-## License
+## 📄 License
 
 [Apache 2.0](LICENSE)
