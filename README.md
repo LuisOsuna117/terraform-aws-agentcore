@@ -22,17 +22,19 @@ module "agentcore" {
 
 Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terraform apply` (or `tofu apply`). That's it.
 
+> **Windows or CI without bash?** Set `trigger_build_on_apply = false` and use the `codebuild_start_build_command` output to drive builds from your pipeline — or skip the build entirely with `create_build_pipeline = false` and a pre-built `image_uri`.
+
 ---
 
 ## ✅ Features
 
 - ✅ **Single required variable** — only `name` is mandatory; every other input has a safe default.
 - 🐳 **Bring Your Own Image (BYO)** — set `create_build_pipeline = false` and pass `image_uri` to skip the CodeBuild pipeline entirely.
-- ⚙️ **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
-- 🛰️ **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the AgentCore runtime is not yet needed.
+- 🔗 **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
+- ⚙️ **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the AgentCore runtime is not yet needed.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **Gateway resource** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway` with JWT or AWS IAM auth, MCP protocol, and optional Lambda interceptors (max 2, via `gateway_interceptor_configurations`).
-- 🔒 **Execution role escape hatch** — bring your own IAM role or let the module create one.
+- 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
 - 🔒 **Extensible IAM** — append policy statements to the execution role via `additional_iam_statements` without touching the module source.
 - 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
 - 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
@@ -64,19 +66,19 @@ Each submodule under `modules/` can also be called independently if you only nee
 Resources marked with a condition are only created when the corresponding flag is `true`.
 
 | Resource | Condition | Purpose |
-|---|---|---|
-| `aws_iam_role` (execution) | `create_execution_role` | Runtime execution role assumed by the AgentCore service. |
-| `aws_iam_role_policy` (execution) | `create_execution_role` | Least-privilege inline policy: ECR pull, CloudWatch Logs, X-Ray, Metrics, Bedrock, workload tokens. |
+|---------------------------------------------|------------------------------------------------------|-----------------------------------------------------------------------|
+| `aws_iam_role` (execution) | `create_execution_role = true` | Runtime execution role assumed by the AgentCore service. |
+| `aws_iam_role_policy` (execution) | `create_execution_role = true` | Least-privilege inline policy: ECR pull, CloudWatch Logs, X-Ray, Metrics, Bedrock, workload tokens. |
 | `aws_iam_role_policy_attachment` | `create_execution_role && attach_bedrock_fullaccess_policy` | Optional `BedrockAgentCoreFullAccess` managed policy attachment. |
-| `aws_bedrockagentcore_agent_runtime` | `create_runtime` | The AgentCore runtime that executes your agent container. |
-| `aws_ecr_repository` + policies | `create_build_pipeline` | Private container registry for agent images. |
-| `aws_codebuild_project` | `create_build_pipeline` | Builds the agent Docker image and pushes it to ECR. |
-| `aws_iam_role` (codebuild) | `create_build_pipeline` | Service role for the CodeBuild pipeline. |
-| `aws_s3_bucket` + config | `create_build_pipeline` | Private versioned bucket for agent source code. |
-| `aws_s3_object` | `create_build_pipeline` | Content-addressed archive of your agent source directory. |
+| `aws_bedrockagentcore_agent_runtime` | `create_runtime = true` | The AgentCore runtime that executes your agent container. |
+| `aws_ecr_repository` + policies | `create_build_pipeline = true` | Private container registry for agent images. |
+| `aws_codebuild_project` | `create_build_pipeline = true` | Builds the agent Docker image and pushes it to ECR. |
+| `aws_iam_role` (codebuild) | `create_build_pipeline = true` | Service role for the CodeBuild pipeline. |
+| `aws_s3_bucket` + config | `create_build_pipeline = true` | Private versioned bucket for agent source code. |
+| `aws_s3_object` | `create_build_pipeline = true` | Content-addressed archive of your agent source directory. |
 | `null_resource` (build trigger) | `create_build_pipeline && trigger_build_on_apply` | Triggers a CodeBuild run on every apply when source code changes. |
-| `aws_bedrockagentcore_memory` | `create_memory` | Persistent memory store for your agent. |
-| `aws_bedrockagentcore_gateway` | `create_gateway` | MCP gateway endpoint with configurable auth and interceptors. |
+| `aws_bedrockagentcore_memory` | `create_memory = true` | Persistent memory store for your agent. |
+| `aws_bedrockagentcore_gateway` | `create_gateway = true` | MCP gateway endpoint with configurable auth and interceptors. |
 | `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
 
 ## 🚫 What this module does NOT create
@@ -254,7 +256,7 @@ module "agentcore" {
 }
 ```
 
-> **Note:** When `create_build_pipeline = false`, no ECR repository, S3 bucket, or CodeBuild project is created. `image_uri` is passed to the AgentCore runtime as-is. Ensure the execution role has permission to pull from the target registry.
+> **Note:** When `create_build_pipeline = false`, the module does not create ECR, S3, or CodeBuild resources and deploys `image_uri` to the runtime as-is. Ensure the execution role has permission to pull from the target registry.
 
 ### Decouple builds from apply
 
