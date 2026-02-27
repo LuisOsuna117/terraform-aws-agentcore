@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.7...v0.2.0) (2026-02-27)
+
+### 🚀 Features
+
+* BYO image, trigger toggle, submodule refactor, create_build_pipeline API ([ad848cc](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/ad848ccf6c46d8229d6b36423da69121786e5d96))
+
 ## [0.1.7](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.1.6...v0.1.7) (2026-02-27)
 
 ### 🐛 Bug Fixes
