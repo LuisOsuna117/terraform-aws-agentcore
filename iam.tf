@@ -62,8 +62,11 @@ resource "aws_iam_role_policy" "agent_execution" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = concat(
-      [
-        # ECR — pull the agent container image
+      # ECR — pull the agent container image (create_build_pipeline = true only).
+      # When create_build_pipeline = false, callers grant their own pull
+      # permissions via additional_iam_statements if the image is in a private
+      # registry.
+      var.create_build_pipeline ? [
         {
           Sid    = "ECRImagePull"
           Effect = "Allow"
@@ -72,8 +75,10 @@ resource "aws_iam_role_policy" "agent_execution" {
             "ecr:GetDownloadUrlForLayer",
             "ecr:BatchCheckLayerAvailability",
           ]
-          Resource = aws_ecr_repository.this.arn
+          Resource = module.build[0].ecr_repository_arn
         },
+      ] : [],
+      [
         {
           Sid      = "ECRAuthToken"
           Effect   = "Allow"
@@ -160,91 +165,5 @@ resource "aws_iam_role_policy" "agent_execution" {
       # Caller-supplied statements merged last so they can override defaults.
       var.additional_iam_statements,
     )
-  })
-}
-
-# ==============================================================================
-# CodeBuild Service Role — Image Build Pipeline
-# ==============================================================================
-
-resource "aws_iam_role" "image_build" {
-  name = "${var.name}-codebuild-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "CodeBuildAssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "codebuild.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-
-  tags = merge(local.common_tags, {
-    Name = "${var.name}-codebuild-role"
-  })
-}
-
-resource "aws_iam_role_policy" "image_build" {
-  name = "${var.name}-codebuild-policy"
-  role = aws_iam_role.image_build.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # CloudWatch Logs — build logs
-      {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/*"
-      },
-      # ECR — push built image + get auth token (auth token requires *)
-      {
-        Sid    = "ECRPush"
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-        ]
-        Resource = aws_ecr_repository.this.arn
-      },
-      {
-        Sid      = "ECRAuthToken"
-        Effect   = "Allow"
-        Action   = ["ecr:GetAuthorizationToken"]
-        Resource = "*"
-      },
-      # S3 — read agent source code archive
-      {
-        Sid    = "S3GetSource"
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-        ]
-        Resource = "${aws_s3_bucket.agent_source.arn}/*"
-      },
-      {
-        Sid    = "S3ListSource"
-        Effect = "Allow"
-        Action = [
-          "s3:ListBucket",
-          "s3:GetBucketLocation",
-        ]
-        Resource = aws_s3_bucket.agent_source.arn
-      },
-    ]
   })
 }

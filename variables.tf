@@ -50,8 +50,32 @@ variable "network_mode" {
   }
 }
 
+variable "create_build_pipeline" {
+  description = "When true (default), creates the full CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. Set to false to use a pre-built image via image_uri (Bring Your Own Image)."
+  type        = bool
+  default     = true
+}
+
+variable "create_runtime" {
+  description = "When true (default), creates the AgentCore runtime resource. Set to false to provision only the build pipeline infrastructure without a runtime (useful for pre-baking images before the runtime is ready)."
+  type        = bool
+  default     = true
+}
+
+variable "image_uri" {
+  description = "Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create_build_pipeline = false. Must be null when create_build_pipeline = true."
+  type        = string
+  default     = null
+}
+
+variable "trigger_build_on_apply" {
+  description = "When true (default) and create_build_pipeline = true, a CodeBuild run is automatically started on every apply where source code, image_tag, or ECR configuration changes. Set to false to manage builds out-of-band (CI/CD pipeline, manual console run). Ignored when create_build_pipeline = false."
+  type        = bool
+  default     = true
+}
+
 variable "image_tag" {
-  description = "Docker image tag to deploy to the AgentCore runtime. Changing this triggers a new CodeBuild run."
+  description = "Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger_build_on_apply = true."
   type        = string
   default     = "latest"
 }
