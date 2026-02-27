@@ -225,3 +225,146 @@ variable "codebuild_build_timeout" {
     error_message = "codebuild_build_timeout must be between 5 and 480 minutes."
   }
 }
+
+# ==============================================================================
+# Memory (modules/memory)
+# ==============================================================================
+
+variable "create_memory" {
+  description = "When true, creates an AgentCore Memory resource using modules/memory. Defaults to false."
+  type        = bool
+  default     = false
+}
+
+variable "memory_name" {
+  description = "Name for the AgentCore Memory resource. Defaults to var.name when null."
+  type        = string
+  default     = null
+}
+
+variable "memory_event_expiry_duration" {
+  description = "Number of days after which memory events expire (7–365). Required when create_memory = true. Defaults to 90."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.memory_event_expiry_duration >= 7 && var.memory_event_expiry_duration <= 365
+    error_message = "memory_event_expiry_duration must be between 7 and 365 days."
+  }
+}
+
+variable "memory_description" {
+  description = "Human-readable description for the Memory resource."
+  type        = string
+  default     = null
+}
+
+variable "memory_encryption_key_arn" {
+  description = "ARN of the KMS key used to encrypt memory data. When null, AWS-managed encryption is used."
+  type        = string
+  default     = null
+}
+
+variable "memory_execution_role_arn" {
+  description = "ARN of the IAM role the memory service assumes. When null, the default service role is used."
+  type        = string
+  default     = null
+}
+
+# ==============================================================================
+# Gateway (modules/gateway)
+# ==============================================================================
+
+variable "create_gateway" {
+  description = "When true, creates an AgentCore Gateway resource using modules/gateway. Defaults to false."
+  type        = bool
+  default     = false
+}
+
+variable "gateway_name" {
+  description = "Name for the AgentCore Gateway resource. Defaults to var.name when null."
+  type        = string
+  default     = null
+}
+
+variable "gateway_description" {
+  description = "Human-readable description for the Gateway resource."
+  type        = string
+  default     = null
+}
+
+variable "gateway_create_role" {
+  description = "When true, the gateway module creates an IAM role. Set to false and supply gateway_role_arn to reuse an existing role."
+  type        = bool
+  default     = true
+}
+
+variable "gateway_role_arn" {
+  description = "ARN of an existing IAM role for the gateway. Required when gateway_create_role = false."
+  type        = string
+  default     = null
+}
+
+variable "gateway_authorizer_type" {
+  description = "Gateway request authorizer type. \"CUSTOM_JWT\" requires gateway_authorizer_configuration. \"AWS_IAM\" uses SigV4."
+  type        = string
+  default     = "AWS_IAM"
+
+  validation {
+    condition     = contains(["CUSTOM_JWT", "AWS_IAM"], var.gateway_authorizer_type)
+    error_message = "gateway_authorizer_type must be either \"CUSTOM_JWT\" or \"AWS_IAM\"."
+  }
+}
+
+variable "gateway_authorizer_configuration" {
+  description = "JWT authorizer configuration. Required when gateway_authorizer_type = \"CUSTOM_JWT\". Shape: { discovery_url, allowed_audience, allowed_clients }."
+  type = object({
+    discovery_url    = string
+    allowed_audience = optional(list(string), [])
+    allowed_clients  = optional(list(string), [])
+  })
+  default = null
+}
+
+variable "gateway_protocol_type" {
+  description = "Protocol type for the gateway. Currently only \"MCP\" is supported."
+  type        = string
+  default     = "MCP"
+}
+
+variable "gateway_protocol_configuration" {
+  description = "MCP protocol configuration. Shape: { instructions, search_type, supported_versions }."
+  type = object({
+    instructions       = optional(string)
+    search_type        = optional(string)
+    supported_versions = optional(list(string), [])
+  })
+  default = null
+}
+
+variable "gateway_interceptor_configurations" {
+  description = "List of interceptor configurations (max 2). Each: { interception_points, lambda_arn, pass_request_headers }."
+  type = list(object({
+    interception_points  = list(string)
+    lambda_arn           = string
+    pass_request_headers = optional(bool, false)
+  }))
+  default = []
+}
+
+variable "gateway_kms_key_arn" {
+  description = "ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used."
+  type        = string
+  default     = null
+}
+
+variable "gateway_exception_level" {
+  description = "Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.gateway_exception_level == null || contains(["INFO", "WARN", "ERROR"], var.gateway_exception_level)
+    error_message = "gateway_exception_level must be one of INFO, WARN, or ERROR."
+  }
+}

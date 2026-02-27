@@ -107,3 +107,56 @@ output "source_bucket_arn" {
   description = "ARN of the S3 source bucket. Null when create_build_pipeline = false."
   value       = var.create_build_pipeline ? module.build[0].source_bucket_arn : null
 }
+
+# ==============================================================================
+# Memory (create_memory = true only)
+# ==============================================================================
+
+output "memory_arn" {
+  description = "ARN of the AgentCore Memory resource. Null when create_memory = false."
+  value       = var.create_memory ? module.memory[0].memory_arn : null
+}
+
+output "memory_id" {
+  description = "Unique identifier of the AgentCore Memory resource. Null when create_memory = false."
+  value       = var.create_memory ? module.memory[0].memory_id : null
+}
+
+output "memory_name" {
+  description = "Name of the AgentCore Memory resource. Null when create_memory = false."
+  value       = var.create_memory ? module.memory[0].memory_name : null
+}
+
+# ==============================================================================
+# Gateway (create_gateway = true only)
+# ==============================================================================
+
+output "gateway_id" {
+  description = "Unique identifier of the AgentCore Gateway. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_id : null
+}
+
+output "gateway_arn" {
+  description = "ARN of the AgentCore Gateway. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_arn : null
+}
+
+output "gateway_url" {
+  description = "URL endpoint of the AgentCore Gateway. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_url : null
+}
+
+output "gateway_workload_identity_arn" {
+  description = "Workload identity ARN associated with the gateway. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].workload_identity_arn : null
+}
+
+output "gateway_role_arn" {
+  description = "ARN of the IAM role used by the gateway. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].role_arn : null
+}
+
+output "gateway_role_name" {
+  description = "Name of the module-created gateway IAM role. Null when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].role_name : null
+}
