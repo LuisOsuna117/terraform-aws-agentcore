@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.1...v0.4.2) (2026-02-28)
+
+### 📖 Documentation
+
+* update README for runtime refactor — VPC mode, JWT authorizer, lifecycle, protocol, workload_identity_arn ([f1c35b0](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/f1c35b079e86fe240a9e2e7391c7120f78f27783))
+
 ## [0.4.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.0...v0.4.1) (2026-02-27)
 
 ### 📖 Documentation
