@@ -23,8 +23,13 @@ output "agent_runtime_version" {
 }
 
 output "agent_runtime_network_mode" {
-  description = "Network mode of the runtime (PUBLIC or PRIVATE). Null when create_runtime = false."
+  description = "Network mode of the runtime (PUBLIC or VPC). Null when create_runtime = false."
   value       = var.create_runtime ? var.network_mode : null
+}
+
+output "agent_runtime_workload_identity_arn" {
+  description = "Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create_runtime = false."
+  value       = var.create_runtime ? module.runtime[0].workload_identity_arn : null
 }
 
 # ==============================================================================

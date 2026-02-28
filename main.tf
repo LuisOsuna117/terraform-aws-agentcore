@@ -56,6 +56,11 @@ resource "terraform_data" "validations" {
       condition     = var.create_execution_role || var.execution_role_arn != null
       error_message = "execution_role_arn must be provided when create_execution_role = false."
     }
+
+    precondition {
+      condition     = !(var.network_mode == "VPC" && (length(var.vpc_security_group_ids) == 0 || length(var.vpc_subnet_ids) == 0))
+      error_message = "vpc_security_group_ids and vpc_subnet_ids must both be non-empty when network_mode = \"VPC\"."
+    }
   }
 }
 
@@ -109,6 +114,23 @@ module "runtime" {
   execution_role_arn = local.execution_role_arn
   image_uri          = local.effective_image_uri
   network_mode       = var.network_mode
+
+  # VPC networking (only used when network_mode = "VPC")
+  vpc_security_group_ids = var.vpc_security_group_ids
+  vpc_subnet_ids         = var.vpc_subnet_ids
+
+  # JWT authorizer (optional)
+  authorizer_discovery_url    = var.authorizer_discovery_url
+  authorizer_allowed_audience = var.authorizer_allowed_audience
+  authorizer_allowed_clients  = var.authorizer_allowed_clients
+
+  # Lifecycle (optional)
+  idle_runtime_session_timeout = var.idle_runtime_session_timeout
+  max_lifetime                 = var.max_lifetime
+
+  # Protocol and headers (optional)
+  server_protocol          = var.server_protocol
+  request_header_allowlist = var.request_header_allowlist
 
   # AWS_REGION and AWS_DEFAULT_REGION are injected automatically.
   # Callers can append additional variables via var.environment_variables.

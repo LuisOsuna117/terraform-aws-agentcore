@@ -40,14 +40,26 @@ variable "tags" {
 # ==============================================================================
 
 variable "network_mode" {
-  description = "Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint on the public internet; PRIVATE keeps it internal to your VPC."
+  description = "Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint publicly; VPC keeps traffic within your VPC via network_mode_config."
   type        = string
   default     = "PUBLIC"
 
   validation {
-    condition     = contains(["PUBLIC", "PRIVATE"], var.network_mode)
-    error_message = "network_mode must be either \"PUBLIC\" or \"PRIVATE\"."
+    condition     = contains(["PUBLIC", "VPC"], var.network_mode)
+    error_message = "network_mode must be either \"PUBLIC\" or \"VPC\"."
   }
+}
+
+variable "vpc_security_group_ids" {
+  description = "Security group IDs attached to the runtime when network_mode = \"VPC\". Must be in the same VPC as vpc_subnet_ids."
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_subnet_ids" {
+  description = "Subnet IDs where the runtime is placed when network_mode = \"VPC\". Use private subnets for least-privilege network design."
+  type        = list(string)
+  default     = []
 }
 
 variable "create_build_pipeline" {
@@ -84,6 +96,65 @@ variable "environment_variables" {
   description = "Additional environment variables injected into the AgentCore runtime process. AWS_REGION and AWS_DEFAULT_REGION are always set automatically."
   type        = map(string)
   default     = {}
+}
+
+# ==============================================================================
+# Runtime — Authorizer
+# ==============================================================================
+
+variable "authorizer_discovery_url" {
+  description = "OIDC discovery URL for JWT authorisation on the runtime endpoint (must end with /.well-known/openid-configuration). When null, the endpoint is unauthenticated at the AgentCore layer."
+  type        = string
+  default     = null
+}
+
+variable "authorizer_allowed_audience" {
+  description = "Set of allowed JWT audience values. Ignored when authorizer_discovery_url is null."
+  type        = list(string)
+  default     = []
+}
+
+variable "authorizer_allowed_clients" {
+  description = "Set of allowed client IDs for JWT token validation. Ignored when authorizer_discovery_url is null."
+  type        = list(string)
+  default     = []
+}
+
+# ==============================================================================
+# Runtime — Lifecycle
+# ==============================================================================
+
+variable "idle_runtime_session_timeout" {
+  description = "Idle session timeout in seconds for the runtime. When null, the service default applies."
+  type        = number
+  default     = null
+}
+
+variable "max_lifetime" {
+  description = "Maximum instance lifetime in seconds for the runtime. When null, the service default applies."
+  type        = number
+  default     = null
+}
+
+# ==============================================================================
+# Runtime — Protocol and Headers
+# ==============================================================================
+
+variable "server_protocol" {
+  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.server_protocol == null || contains(["HTTP", "MCP", "A2A"], var.server_protocol)
+    error_message = "server_protocol must be one of: HTTP, MCP, A2A."
+  }
+}
+
+variable "request_header_allowlist" {
+  description = "List of HTTP request headers to pass through to the runtime container. When empty, no additional headers are forwarded."
+  type        = list(string)
+  default     = []
 }
 
 # ==============================================================================
