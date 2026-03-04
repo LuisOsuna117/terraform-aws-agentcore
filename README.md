@@ -599,15 +599,9 @@ Set `authorizer_discovery_url` to a valid OIDC discovery URL (must end with `/.w
 
 The runtime exposes a `workload_identity_arn` output (and `agent_runtime_workload_identity_arn` at the root). Use this ARN to grant callers permission to obtain short-lived AgentCore workload access tokens for the runtime.
 
-### 🧰 ARM vs. x86
+### 🧰 ARM64 requirement
 
-The default CodeBuild image (`amazonlinux2-aarch64-standard:3.0`) and environment type (`ARM_CONTAINER`) produce ARM64 images. To build x86 images instead, override both variables:
-
-```hcl
-codebuild_environment_image = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-codebuild_environment_type  = "LINUX_CONTAINER"
-codebuild_compute_type      = "BUILD_GENERAL1_LARGE"
-```
+AgentCore supports ARM64 architecture only. The default CodeBuild image (`amazonlinux2-aarch64-standard:3.0`) and environment type (`ARM_CONTAINER`) produce compatible ARM64 images. You must use ARM64 images; x86 images are not supported.
 
 ### 🔒 IAM and `BedrockAgentCoreFullAccess`
 
