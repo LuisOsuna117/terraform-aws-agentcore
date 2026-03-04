@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.2...v0.4.3) (2026-03-04)
+
+### 📖 Documentation
+
+* clarify ARM64 requirement for AgentCore ([f66a523](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/f66a5232791fe21dd4511d4d906c656147c20318))
+
 ## [0.4.2](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.1...v0.4.2) (2026-02-28)
 
 ### 📖 Documentation
