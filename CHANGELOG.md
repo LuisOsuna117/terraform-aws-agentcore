@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.4...v0.4.5) (2026-05-14)
+
+### 🐛 Bug Fixes
+
+* **gateway:** wait for invoke policy propagation ([fa7fdcc](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/fa7fdcc13103984cd6b156417bfad834cf65227b))
+
 ## [0.4.4](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.3...v0.4.4) (2026-05-14)
 
 ### 🐛 Bug Fixes
