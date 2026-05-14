@@ -85,7 +85,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_bedrockagentcore_gateway` | `create_gateway = true` | MCP gateway endpoint with configurable auth and interceptors. |
 | `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
 | `aws_cloudformation_stack` (gateway target) | `create_gateway && length(gateway_mcp_targets) > 0` | Creates `AWS::BedrockAgentCore::GatewayTarget` resources with the full MCP server credential shape. |
-| `aws_iam_role_policy` (gateway invoke) | `create_gateway && any gateway_mcp_targets use agent_runtime_arn` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on AgentCore Runtime targets only. |
+| `aws_iam_role_policy` (gateway invoke) | `create_gateway && any gateway_mcp_targets use agent_runtime_arn` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on AgentCore Runtime base and runtime-endpoint ARNs. |
 
 ## 🚫 What this module does NOT create
 
@@ -361,7 +361,7 @@ module "agentcore" {
 }
 ```
 
-For `agent_runtime_arn` targets, the module derives the AgentCore Runtime invoke endpoint, signs outbound calls as the gateway IAM role with service `bedrock-agentcore` in the current AWS region, and grants `bedrock-agentcore:InvokeAgentRuntime` on that runtime ARN.
+For `agent_runtime_arn` targets, the module derives the AgentCore Runtime invoke endpoint, signs outbound calls as the gateway IAM role with service `bedrock-agentcore` in the current AWS region, and grants `bedrock-agentcore:InvokeAgentRuntime` on both the base runtime ARN and the qualifier-specific runtime endpoint ARN.
 
 ### Multiple MCP targets
 
@@ -634,7 +634,7 @@ module "agentcore" {
 - 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
 - ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
 - 🌐 **Gateway interceptors are Lambda-backed** — each interceptor Lambda receives request or response payloads; apply appropriate resource-based policies and consider VPC isolation for sensitive workloads.
-- 🔑 **Gateway target outbound auth** — AgentCore Runtime MCP targets use the gateway IAM role for SigV4 outbound auth and receive an invoke policy scoped only to the runtime ARNs in `gateway_mcp_targets`.
+- 🔑 **Gateway target outbound auth** — AgentCore Runtime MCP targets use the gateway IAM role for SigV4 outbound auth and receive an invoke policy scoped to both the base runtime ARN and the qualifier-specific runtime endpoint ARN for each runtime target in `gateway_mcp_targets`.
 
 ---
 
@@ -677,7 +677,7 @@ Set `authorizer_discovery_url` to a valid OIDC discovery URL (must end with `/.w
 
 Use `gateway_mcp_targets` to attach one or more MCP targets to a gateway. Each target must provide exactly one of:
 
-- `agent_runtime_arn` — the module derives `https://bedrock-agentcore.<region>.<dns-suffix>/runtimes/<runtime-id>/invocations?qualifier=<qualifier>&accountId=<account-id>`, configures gateway IAM role SigV4 outbound auth, and grants `bedrock-agentcore:InvokeAgentRuntime`.
+- `agent_runtime_arn` — the module derives `https://bedrock-agentcore.<region>.<dns-suffix>/runtimes/<runtime-id>/invocations?qualifier=<qualifier>&accountId=<account-id>`, configures gateway IAM role SigV4 outbound auth, and grants `bedrock-agentcore:InvokeAgentRuntime` on the runtime and runtime-endpoint ARNs.
 - `endpoint` — the module uses the explicit HTTPS MCP server endpoint and does not create an AgentCore Runtime invoke policy.
 
 ### ⏱️ Lifecycle and protocol
