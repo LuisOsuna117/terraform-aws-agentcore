@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.3...v0.4.4) (2026-05-14)
+
+### 🐛 Bug Fixes
+
+* **gateway:** add MCP target support ([1cf71db](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/1cf71db7562cbcc5941c9633a1e34396b71a387d))
+
 ## [0.4.3](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.2...v0.4.3) (2026-03-04)
 
 ### 📖 Documentation
