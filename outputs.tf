@@ -161,6 +161,16 @@ output "gateway_workload_identity_arn" {
   value       = var.create_gateway ? module.gateway[0].workload_identity_arn : null
 }
 
+output "gateway_target_ids" {
+  description = "Map of MCP target keys to AgentCore Gateway target IDs. Empty when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_target_ids : {}
+}
+
+output "gateway_target_endpoints" {
+  description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_target_endpoints : {}
+}
+
 output "gateway_role_arn" {
   description = "ARN of the IAM role used by the gateway. Null when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].role_arn : null

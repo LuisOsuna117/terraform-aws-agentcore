@@ -38,8 +38,8 @@ locals {
 resource "terraform_data" "validations" {
   lifecycle {
     precondition {
-      condition     = !(!var.create_build_pipeline && (var.image_uri == null || trimspace(var.image_uri) == ""))
-      error_message = "image_uri must be set and non-empty when create_build_pipeline = false."
+      condition     = !(!var.create_build_pipeline && var.create_runtime && (var.image_uri == null || trimspace(var.image_uri) == ""))
+      error_message = "image_uri must be set and non-empty when create_runtime = true and create_build_pipeline = false."
     }
 
     precondition {
@@ -48,18 +48,18 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = !(var.trigger_build_on_apply && !var.create_build_pipeline)
-      error_message = "trigger_build_on_apply = true has no effect when create_build_pipeline = false. Set it to false."
-    }
-
-    precondition {
-      condition     = var.create_execution_role || var.execution_role_arn != null
-      error_message = "execution_role_arn must be provided when create_execution_role = false."
+      condition     = var.create_execution_role || !var.create_runtime || var.execution_role_arn != null
+      error_message = "execution_role_arn must be provided when create_runtime = true and create_execution_role = false."
     }
 
     precondition {
       condition     = !(var.network_mode == "VPC" && (length(var.vpc_security_group_ids) == 0 || length(var.vpc_subnet_ids) == 0))
       error_message = "vpc_security_group_ids and vpc_subnet_ids must both be non-empty when network_mode = \"VPC\"."
+    }
+
+    precondition {
+      condition     = var.create_gateway || length(var.gateway_mcp_targets) == 0
+      error_message = "gateway_mcp_targets requires create_gateway = true."
     }
   }
 }
@@ -183,6 +183,7 @@ module "gateway" {
   protocol_type              = var.gateway_protocol_type
   protocol_configuration     = var.gateway_protocol_configuration
   interceptor_configurations = var.gateway_interceptor_configurations
+  mcp_targets                = var.gateway_mcp_targets
   kms_key_arn                = var.gateway_kms_key_arn
   exception_level            = var.gateway_exception_level
   tags                       = local.common_tags
