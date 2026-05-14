@@ -127,6 +127,77 @@ variable "interceptor_configurations" {
 }
 
 # ==============================================================================
+# MCP Targets
+# ==============================================================================
+
+variable "mcp_targets" {
+  description = <<-EOT
+    Map of MCP Gateway Targets to attach to the gateway.
+    Each map key is used as the target name unless name is set.
+
+    Shape:
+      {
+        name                     = optional(string)       # Target name; defaults to the map key
+        description              = optional(string)       # Target description
+        endpoint                 = optional(string)       # Explicit HTTPS MCP server endpoint
+        agent_runtime_arn        = optional(string)       # AgentCore Runtime ARN; endpoint and SigV4 auth are derived
+        qualifier                = optional(string)       # AgentCore Runtime qualifier; defaults to "DEFAULT"
+        allowed_query_parameters = optional(list(string)) # Query parameters propagated to the target
+        allowed_request_headers  = optional(list(string)) # Request headers propagated to the target
+        allowed_response_headers = optional(list(string)) # Response headers propagated from the target
+      }
+
+    Exactly one of endpoint or agent_runtime_arn must be provided for each target.
+  EOT
+  type = map(object({
+    name                     = optional(string)
+    description              = optional(string)
+    endpoint                 = optional(string)
+    agent_runtime_arn        = optional(string)
+    qualifier                = optional(string, "DEFAULT")
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for target in values(var.mcp_targets) :
+      length(compact([
+        try(trimspace(target.endpoint), ""),
+        try(trimspace(target.agent_runtime_arn), ""),
+      ])) == 1
+    ])
+    error_message = "Each mcp_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.mcp_targets) :
+      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
+    ])
+    error_message = "Each explicit MCP target endpoint must start with https://."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.mcp_targets) :
+      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
+    ])
+    error_message = "Each agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.mcp_targets) :
+      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
+    ])
+    error_message = "Each MCP target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+}
+
+# ==============================================================================
 # Encryption & Advanced
 # ==============================================================================
 

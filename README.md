@@ -37,7 +37,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
 - 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
-- 🌐 **Gateway resource** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway` with JWT or AWS IAM auth, MCP protocol, and optional Lambda interceptors (max 2, via `gateway_interceptor_configurations`).
+- 🌐 **Gateway and MCP targets** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway`; add `gateway_mcp_targets` for AgentCore Runtime MCP servers or explicit HTTPS MCP endpoints.
 - 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
 - 🔒 **Extensible IAM** — append policy statements to the execution role via `additional_iam_statements` without touching the module source.
 - 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
@@ -58,7 +58,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
     ├── build/       # ECR + S3 + CodeBuild + IAM (create_build_pipeline = true)
     ├── runtime/     # aws_bedrockagentcore_agent_runtime
     ├── memory/      # aws_bedrockagentcore_memory (create_memory = true)
-    └── gateway/     # aws_bedrockagentcore_gateway (create_gateway = true)
+    └── gateway/     # aws_bedrockagentcore_gateway + MCP Gateway Targets (create_gateway = true)
 ```
 
 Each submodule under `modules/` can also be called independently if you only need a subset of resources.
@@ -84,6 +84,8 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_bedrockagentcore_memory` | `create_memory = true` | Persistent memory store for your agent. |
 | `aws_bedrockagentcore_gateway` | `create_gateway = true` | MCP gateway endpoint with configurable auth and interceptors. |
 | `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
+| `aws_cloudformation_stack` (gateway target) | `create_gateway && length(gateway_mcp_targets) > 0` | Creates `AWS::BedrockAgentCore::GatewayTarget` resources with the full MCP server credential shape. |
+| `aws_iam_role_policy` (gateway invoke) | `create_gateway && any gateway_mcp_targets use agent_runtime_arn` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on AgentCore Runtime targets only. |
 
 ## 🚫 What this module does NOT create
 
@@ -156,7 +158,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set automatically. | `map(string)` | `{}` | no |
-| <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_execution\_role = false. | `string` | `null` | no |
+| <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_runtime = true and create\_execution\_role = false. | `string` | `null` | no |
 | <a name="input_gateway_authorizer_configuration"></a> [gateway\_authorizer\_configuration](#input\_gateway\_authorizer\_configuration) | JWT authorizer configuration. Required when gateway\_authorizer\_type = "CUSTOM\_JWT". Shape: { discovery\_url, allowed\_audience, allowed\_clients }. | <pre>object({<br/>    discovery_url    = string<br/>    allowed_audience = optional(list(string), [])<br/>    allowed_clients  = optional(list(string), [])<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_authorizer_type"></a> [gateway\_authorizer\_type](#input\_gateway\_authorizer\_type) | Gateway request authorizer type. "CUSTOM\_JWT" requires gateway\_authorizer\_configuration. "AWS\_IAM" uses SigV4. | `string` | `"AWS_IAM"` | no |
 | <a name="input_gateway_create_role"></a> [gateway\_create\_role](#input\_gateway\_create\_role) | When true, the gateway module creates an IAM role. Set to false and supply gateway\_role\_arn to reuse an existing role. | `bool` | `true` | no |
@@ -164,13 +166,14 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_exception_level"></a> [gateway\_exception\_level](#input\_gateway\_exception\_level) | Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR. | `string` | `null` | no |
 | <a name="input_gateway_interceptor_configurations"></a> [gateway\_interceptor\_configurations](#input\_gateway\_interceptor\_configurations) | List of interceptor configurations (max 2). Each: { interception\_points, lambda\_arn, pass\_request\_headers }. | <pre>list(object({<br/>    interception_points  = list(string)<br/>    lambda_arn           = string<br/>    pass_request_headers = optional(bool, false)<br/>  }))</pre> | `[]` | no |
 | <a name="input_gateway_kms_key_arn"></a> [gateway\_kms\_key\_arn](#input\_gateway\_kms\_key\_arn) | ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used. | `string` | `null` | no |
+| <a name="input_gateway_mcp_targets"></a> [gateway\_mcp\_targets](#input\_gateway\_mcp\_targets) | Map of MCP Gateway Targets to attach when create\_gateway = true. Each target must set exactly one of endpoint or agent\_runtime\_arn. AgentCore Runtime targets derive the endpoint and use gateway IAM role SigV4 auth. | <pre>map(object({<br/>    name                     = optional(string)<br/>    description              = optional(string)<br/>    endpoint                 = optional(string)<br/>    agent_runtime_arn        = optional(string)<br/>    qualifier                = optional(string, "DEFAULT")<br/>    allowed_query_parameters = optional(list(string), [])<br/>    allowed_request_headers  = optional(list(string), [])<br/>    allowed_response_headers = optional(list(string), [])<br/>  }))</pre> | `{}` | no |
 | <a name="input_gateway_name"></a> [gateway\_name](#input\_gateway\_name) | Name for the AgentCore Gateway resource. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_gateway_protocol_configuration"></a> [gateway\_protocol\_configuration](#input\_gateway\_protocol\_configuration) | MCP protocol configuration. Shape: { instructions, search\_type, supported\_versions }. | <pre>object({<br/>    instructions       = optional(string)<br/>    search_type        = optional(string)<br/>    supported_versions = optional(list(string), [])<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_protocol_type"></a> [gateway\_protocol\_type](#input\_gateway\_protocol\_type) | Protocol type for the gateway. Currently only "MCP" is supported. | `string` | `"MCP"` | no |
 | <a name="input_gateway_role_arn"></a> [gateway\_role\_arn](#input\_gateway\_role\_arn) | ARN of an existing IAM role for the gateway. Required when gateway\_create\_role = false. | `string` | `null` | no |
 | <a name="input_idle_runtime_session_timeout"></a> [idle\_runtime\_session\_timeout](#input\_idle\_runtime\_session\_timeout) | Idle session timeout in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
 | <a name="input_image_tag"></a> [image\_tag](#input\_image\_tag) | Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger\_build\_on\_apply = true. | `string` | `"latest"` | no |
-| <a name="input_image_uri"></a> [image\_uri](#input\_image\_uri) | Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create\_build\_pipeline = false. Must be null when create\_build\_pipeline = true. | `string` | `null` | no |
+| <a name="input_image_uri"></a> [image\_uri](#input\_image\_uri) | Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create\_runtime = true and create\_build\_pipeline = false. Must be null when create\_build\_pipeline = true. | `string` | `null` | no |
 | <a name="input_max_lifetime"></a> [max\_lifetime](#input\_max\_lifetime) | Maximum instance lifetime in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
 | <a name="input_memory_description"></a> [memory\_description](#input\_memory\_description) | Human-readable description for the Memory resource. | `string` | `null` | no |
 | <a name="input_memory_encryption_key_arn"></a> [memory\_encryption\_key\_arn](#input\_memory\_encryption\_key\_arn) | ARN of the KMS key used to encrypt memory data. When null, AWS-managed encryption is used. | `string` | `null` | no |
@@ -213,6 +216,8 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_gateway_id"></a> [gateway\_id](#output\_gateway\_id) | Unique identifier of the AgentCore Gateway. Null when create\_gateway = false. |
 | <a name="output_gateway_role_arn"></a> [gateway\_role\_arn](#output\_gateway\_role\_arn) | ARN of the IAM role used by the gateway. Null when create\_gateway = false. |
 | <a name="output_gateway_role_name"></a> [gateway\_role\_name](#output\_gateway\_role\_name) | Name of the module-created gateway IAM role. Null when create\_gateway = false. |
+| <a name="output_gateway_target_endpoints"></a> [gateway\_target\_endpoints](#output\_gateway\_target\_endpoints) | Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create\_gateway = false. |
+| <a name="output_gateway_target_ids"></a> [gateway\_target\_ids](#output\_gateway\_target\_ids) | Map of MCP target keys to AgentCore Gateway target IDs. Empty when create\_gateway = false. |
 | <a name="output_gateway_url"></a> [gateway\_url](#output\_gateway\_url) | URL endpoint of the AgentCore Gateway. Null when create\_gateway = false. |
 | <a name="output_gateway_workload_identity_arn"></a> [gateway\_workload\_identity\_arn](#output\_gateway\_workload\_identity\_arn) | Workload identity ARN associated with the gateway. Null when create\_gateway = false. |
 | <a name="output_memory_arn"></a> [memory\_arn](#output\_memory\_arn) | ARN of the AgentCore Memory resource. Null when create\_memory = false. |
@@ -231,6 +236,9 @@ Resources marked with a condition are only created when the corresponding flag i
 | [examples/basic](examples/basic) | Minimal runtime — one module call with sensible defaults and a working Python agent stub. |
 | [examples/byo-image](examples/byo-image) | Bring Your Own Image — skips the build pipeline and deploys a pre-built image URI. |
 | [examples/codebuild-no-trigger](examples/codebuild-no-trigger) | CodeBuild pipeline provisioned but builds are driven by your own CI/CD, not by `apply`. |
+| [examples/gateway-only](examples/gateway-only) | Standalone MCP Gateway with AWS IAM inbound auth and no targets. |
+| [examples/gateway-agent-runtime-target](examples/gateway-agent-runtime-target) | Standalone MCP Gateway with one AgentCore Runtime MCP target using derived endpoint and SigV4 outbound auth. |
+| [examples/gateway-multiple-targets](examples/gateway-multiple-targets) | Standalone MCP Gateway with multiple MCP targets, including AgentCore Runtime and explicit HTTPS endpoints. |
 
 ---
 
@@ -309,20 +317,78 @@ module "agentcore" {
 }
 ```
 
-### Add a Gateway
+### Gateway only
 
 ```hcl
 module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
-  version = "~> 0.3"
+  version = "~> 0.4"
 
-  name           = "my-agent"
-  create_gateway = true
+  name = "mcp-gateway"
 
-  gateway_authorizer_type = "CUSTOM_JWT"
-  gateway_authorizer_configuration = {
-    discovery_url    = "https://auth.example.com/.well-known/openid-configuration"
-    allowed_audience = ["my-agent-api"]
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+}
+```
+
+### Gateway with an AgentCore Runtime MCP target
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name = "aegis-mcp-gateway"
+
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+
+  gateway_mcp_targets = {
+    datadog = {
+      description       = "Read-only Datadog MCP runtime."
+      agent_runtime_arn = var.datadog_mcp_runtime_arn
+      qualifier         = "DEFAULT"
+    }
+  }
+}
+```
+
+For `agent_runtime_arn` targets, the module derives the AgentCore Runtime invoke endpoint, signs outbound calls as the gateway IAM role with service `bedrock-agentcore` in the current AWS region, and grants `bedrock-agentcore:InvokeAgentRuntime` on that runtime ARN.
+
+### Multiple MCP targets
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name = "shared-mcp-gateway"
+
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+
+  gateway_mcp_targets = {
+    runtime = {
+      description       = "AgentCore Runtime MCP server."
+      agent_runtime_arn = var.agent_runtime_arn
+    }
+
+    external = {
+      description = "External MCP server."
+      endpoint    = "https://mcp.example.com/mcp"
+    }
   }
 }
 ```
@@ -541,6 +607,24 @@ module "agentcore" {
 }
 ```
 
+### JWT-authenticated gateway
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name           = "jwt-mcp-gateway"
+  create_gateway = true
+
+  gateway_authorizer_type = "CUSTOM_JWT"
+  gateway_authorizer_configuration = {
+    discovery_url    = "https://auth.example.com/.well-known/openid-configuration"
+    allowed_audience = ["my-agent-api"]
+  }
+}
+```
+
 ---
 
 ## 🔒 Security notes
@@ -550,6 +634,7 @@ module "agentcore" {
 - 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
 - ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
 - 🌐 **Gateway interceptors are Lambda-backed** — each interceptor Lambda receives request or response payloads; apply appropriate resource-based policies and consider VPC isolation for sensitive workloads.
+- 🔑 **Gateway target outbound auth** — AgentCore Runtime MCP targets use the gateway IAM role for SigV4 outbound auth and receive an invoke policy scoped only to the runtime ARNs in `gateway_mcp_targets`.
 
 ---
 
@@ -588,6 +673,13 @@ Use NAT Gateway or VPC Interface Endpoints depending on your network topology.
 
 Set `authorizer_discovery_url` to a valid OIDC discovery URL (must end with `/.well-known/openid-configuration`) to attach a JWT authorizer to the runtime endpoint. Use `authorizer_allowed_audience` and `authorizer_allowed_clients` to scope accepted tokens. When null (default), the endpoint is unauthenticated at the AgentCore layer.
 
+### 🌐 Gateway targets
+
+Use `gateway_mcp_targets` to attach one or more MCP targets to a gateway. Each target must provide exactly one of:
+
+- `agent_runtime_arn` — the module derives `https://bedrock-agentcore.<region>.<dns-suffix>/runtimes/<runtime-id>/invocations?qualifier=<qualifier>&accountId=<account-id>`, configures gateway IAM role SigV4 outbound auth, and grants `bedrock-agentcore:InvokeAgentRuntime`.
+- `endpoint` — the module uses the explicit HTTPS MCP server endpoint and does not create an AgentCore Runtime invoke policy.
+
 ### ⏱️ Lifecycle and protocol
 
 - `idle_runtime_session_timeout` — seconds before an idle session is reaped; reduces cost in low-traffic deployments.
@@ -618,7 +710,7 @@ The inline policy baseline grants:
 
 ### 📦 Provider version
 
-The AgentCore resource types (`aws_bedrockagentcore_agent_runtime`, `aws_bedrockagentcore_memory`, `aws_bedrockagentcore_gateway`) were introduced in hashicorp/aws **v6.x**. The minimum tested version is **6.21**. AgentCore is a recently launched service; provider attributes may change in minor releases. Review the [AWS provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) before upgrading.
+The AgentCore resource types (`aws_bedrockagentcore_agent_runtime`, `aws_bedrockagentcore_memory`, `aws_bedrockagentcore_gateway`) were introduced in hashicorp/aws **v6.x**. The minimum tested version is **6.21**. Gateway targets are currently managed through `aws_cloudformation_stack` inside `modules/gateway` so the module can set the IAM credential provider `Service` and `Region` fields required for AgentCore Runtime MCP targets. AgentCore is a recently launched service; provider attributes may change in minor releases. Review the [AWS provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) before upgrading.
 
 ### 🧩 Using submodules independently
 

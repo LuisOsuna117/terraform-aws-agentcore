@@ -75,7 +75,7 @@ variable "create_runtime" {
 }
 
 variable "image_uri" {
-  description = "Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create_build_pipeline = false. Must be null when create_build_pipeline = true."
+  description = "Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create_runtime = true and create_build_pipeline = false. Must be null when create_build_pipeline = true."
   type        = string
   default     = null
 }
@@ -168,7 +168,7 @@ variable "create_execution_role" {
 }
 
 variable "execution_role_arn" {
-  description = "ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create_execution_role = false."
+  description = "ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create_runtime = true and create_execution_role = false."
   type        = string
   default     = null
 }
@@ -438,6 +438,56 @@ variable "gateway_interceptor_configurations" {
     pass_request_headers = optional(bool, false)
   }))
   default = []
+}
+
+variable "gateway_mcp_targets" {
+  description = "Map of MCP Gateway Targets to attach when create_gateway = true. Each target must set exactly one of endpoint or agent_runtime_arn. AgentCore Runtime targets derive the endpoint and use gateway IAM role SigV4 auth."
+  type = map(object({
+    name                     = optional(string)
+    description              = optional(string)
+    endpoint                 = optional(string)
+    agent_runtime_arn        = optional(string)
+    qualifier                = optional(string, "DEFAULT")
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      length(compact([
+        try(trimspace(target.endpoint), ""),
+        try(trimspace(target.agent_runtime_arn), ""),
+      ])) == 1
+    ])
+    error_message = "Each gateway_mcp_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
+    ])
+    error_message = "Each explicit gateway_mcp_targets endpoint must start with https://."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
+    ])
+    error_message = "Each gateway_mcp_targets agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
+    ])
+    error_message = "Each gateway_mcp_targets target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
 }
 
 variable "gateway_kms_key_arn" {

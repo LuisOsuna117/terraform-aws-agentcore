@@ -22,6 +22,16 @@ output "workload_identity_arn" {
   value       = try(aws_bedrockagentcore_gateway.this.workload_identity_details[0].workload_identity_arn, null)
 }
 
+output "gateway_target_ids" {
+  description = "Map of MCP target keys to AgentCore Gateway target IDs."
+  value       = { for key, stack in aws_cloudformation_stack.gateway_target : key => stack.outputs["TargetId"] }
+}
+
+output "gateway_target_endpoints" {
+  description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets."
+  value       = local.mcp_target_endpoints
+}
+
 # ==============================================================================
 # IAM
 # ==============================================================================
