@@ -219,6 +219,16 @@ resource "aws_iam_role_policy" "gateway_invoke_agent_runtime" {
   depends_on = [terraform_data.validations]
 }
 
+resource "time_sleep" "gateway_invoke_policy_propagation" {
+  count = length(local.agent_runtime_targets) > 0 ? 1 : 0
+
+  create_duration = "45s"
+
+  depends_on = [
+    aws_iam_role_policy.gateway_invoke_agent_runtime,
+  ]
+}
+
 # ==============================================================================
 # Gateway Targets
 #
@@ -284,6 +294,7 @@ resource "aws_cloudformation_stack" "gateway_target" {
   depends_on = [
     aws_bedrockagentcore_gateway.this,
     aws_iam_role_policy.gateway_invoke_agent_runtime,
+    time_sleep.gateway_invoke_policy_propagation,
     terraform_data.validations,
   ]
 }
