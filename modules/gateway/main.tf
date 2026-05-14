@@ -64,6 +64,11 @@ locals {
     for key, parts in local.runtime_arn_parts : key => parts[4]
   }
 
+  runtime_endpoint_arns = [
+    for target in values(local.agent_runtime_targets) :
+    "${target.agent_runtime_arn}/runtime-endpoint/${coalesce(target.qualifier, "DEFAULT")}"
+  ]
+
   mcp_target_endpoints = merge(
     {
       for key, target in var.mcp_targets : key => trimspace(target.endpoint)
@@ -211,7 +216,10 @@ resource "aws_iam_role_policy" "gateway_invoke_agent_runtime" {
         Action = [
           "bedrock-agentcore:InvokeAgentRuntime",
         ]
-        Resource = [for target in values(local.agent_runtime_targets) : target.agent_runtime_arn]
+        Resource = concat(
+          [for target in values(local.agent_runtime_targets) : target.agent_runtime_arn],
+          local.runtime_endpoint_arns,
+        )
       },
     ]
   })
