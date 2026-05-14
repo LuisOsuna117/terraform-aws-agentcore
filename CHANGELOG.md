@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.5...v0.4.6) (2026-05-14)
+
+### 🐛 Bug Fixes
+
+* **gateway:** include runtime endpoint invoke ARN ([1e0cdf0](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/1e0cdf00e59a9df6a2d4787f6f154689265081f0))
+
 ## [0.4.5](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.4...v0.4.5) (2026-05-14)
 
 ### 🐛 Bug Fixes
