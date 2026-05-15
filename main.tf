@@ -28,6 +28,33 @@ locals {
   # create_build_pipeline = true  → ECR repo URL + image_tag from module.build
   # create_build_pipeline = false → caller-supplied image_uri (BYO)
   effective_image_uri = var.create_build_pipeline ? module.build[0].image_uri : var.image_uri
+
+  # Optional self-target: attach the runtime created by this root module call to
+  # the gateway created by this same call. The stable map key is "runtime".
+  gateway_runtime_target_key  = "runtime"
+  gateway_runtime_target_name = coalesce(var.gateway_runtime_target.name, local.gateway_runtime_target_key)
+
+  gateway_runtime_mcp_target = var.gateway_attach_runtime_target && var.create_runtime ? {
+    (local.gateway_runtime_target_key) = {
+      name                     = local.gateway_runtime_target_name
+      description              = var.gateway_runtime_target.description
+      endpoint                 = null
+      agent_runtime_arn        = module.runtime[0].agent_runtime_arn
+      qualifier                = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
+      allowed_query_parameters = var.gateway_runtime_target.allowed_query_parameters
+      allowed_request_headers  = var.gateway_runtime_target.allowed_request_headers
+      allowed_response_headers = var.gateway_runtime_target.allowed_response_headers
+    }
+  } : {}
+
+  effective_gateway_mcp_targets = merge(
+    var.gateway_mcp_targets,
+    local.gateway_runtime_mcp_target,
+  )
+
+  gateway_mcp_target_names = [
+    for key, target in var.gateway_mcp_targets : coalesce(target.name, key)
+  ]
 }
 
 # ==============================================================================
@@ -60,6 +87,26 @@ resource "terraform_data" "validations" {
     precondition {
       condition     = var.create_gateway || length(var.gateway_mcp_targets) == 0
       error_message = "gateway_mcp_targets requires create_gateway = true."
+    }
+
+    precondition {
+      condition     = !var.gateway_attach_runtime_target || var.create_runtime
+      error_message = "gateway_attach_runtime_target = true requires create_runtime = true."
+    }
+
+    precondition {
+      condition     = !var.gateway_attach_runtime_target || var.create_gateway
+      error_message = "gateway_attach_runtime_target = true requires create_gateway = true."
+    }
+
+    precondition {
+      condition     = !var.gateway_attach_runtime_target || !contains(keys(var.gateway_mcp_targets), local.gateway_runtime_target_key)
+      error_message = "gateway_mcp_targets cannot use key \"runtime\" when gateway_attach_runtime_target = true; that key is reserved for the module-created runtime target."
+    }
+
+    precondition {
+      condition     = !var.gateway_attach_runtime_target || !contains(local.gateway_mcp_target_names, local.gateway_runtime_target_name)
+      error_message = "gateway_runtime_target.name must not collide with any resolved gateway_mcp_targets target name."
     }
   }
 }
@@ -183,7 +230,7 @@ module "gateway" {
   protocol_type              = var.gateway_protocol_type
   protocol_configuration     = var.gateway_protocol_configuration
   interceptor_configurations = var.gateway_interceptor_configurations
-  mcp_targets                = var.gateway_mcp_targets
+  mcp_targets                = local.effective_gateway_mcp_targets
   kms_key_arn                = var.gateway_kms_key_arn
   exception_level            = var.gateway_exception_level
   tags                       = local.common_tags
