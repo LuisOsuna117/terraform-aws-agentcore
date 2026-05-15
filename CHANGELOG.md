@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.6...v0.5.0) (2026-05-15)
+
+### 🚀 Features
+
+* **gateway:** attach module runtime as target ([d52462e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/d52462ebad3cf64e419103155bade5b9f9bf9123))
+
 ## [0.4.6](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.5...v0.4.6) (2026-05-14)
 
 ### 🐛 Bug Fixes
