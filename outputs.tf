@@ -171,6 +171,11 @@ output "gateway_target_endpoints" {
   value       = var.create_gateway ? module.gateway[0].gateway_target_endpoints : {}
 }
 
+output "gateway_runtime_target_id" {
+  description = "Gateway target ID for the module-created runtime target. Null when gateway_attach_runtime_target = false."
+  value       = var.create_gateway && var.gateway_attach_runtime_target ? try(module.gateway[0].gateway_target_ids["runtime"], null) : null
+}
+
 output "gateway_role_arn" {
   description = "ARN of the IAM role used by the gateway. Null when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].role_arn : null

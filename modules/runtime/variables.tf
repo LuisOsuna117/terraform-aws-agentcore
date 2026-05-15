@@ -94,7 +94,7 @@ variable "server_protocol" {
   default     = null
 
   validation {
-    condition     = var.server_protocol == null || contains(["HTTP", "MCP", "A2A"], var.server_protocol)
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
     error_message = "server_protocol must be one of: HTTP, MCP, A2A."
   }
 }

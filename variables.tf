@@ -146,7 +146,7 @@ variable "server_protocol" {
   default     = null
 
   validation {
-    condition     = var.server_protocol == null || contains(["HTTP", "MCP", "A2A"], var.server_protocol)
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
     error_message = "server_protocol must be one of: HTTP, MCP, A2A."
   }
 }
@@ -490,6 +490,31 @@ variable "gateway_mcp_targets" {
   }
 }
 
+variable "gateway_attach_runtime_target" {
+  description = "When true, attach the runtime created by this module call as an MCP Gateway Target. Uses the reserved target key \"runtime\" and requires create_runtime = true and create_gateway = true."
+  type        = bool
+  default     = false
+}
+
+variable "gateway_runtime_target" {
+  description = "Configuration for the module-created runtime MCP Gateway Target when gateway_attach_runtime_target = true. The generated target uses map key \"runtime\" and defaults name to \"runtime\"."
+  type = object({
+    name                     = optional(string)
+    description              = optional(string)
+    qualifier                = optional(string, "DEFAULT")
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.gateway_runtime_target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", var.gateway_runtime_target.name))
+    error_message = "gateway_runtime_target.name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+}
+
 variable "gateway_kms_key_arn" {
   description = "ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used."
   type        = string
@@ -502,7 +527,7 @@ variable "gateway_exception_level" {
   default     = null
 
   validation {
-    condition     = var.gateway_exception_level == null || contains(["INFO", "WARN", "ERROR"], var.gateway_exception_level)
+    condition     = var.gateway_exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.gateway_exception_level)
     error_message = "gateway_exception_level must be one of INFO, WARN, or ERROR."
   }
 }

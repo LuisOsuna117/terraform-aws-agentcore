@@ -213,7 +213,7 @@ variable "exception_level" {
   default     = null
 
   validation {
-    condition     = var.exception_level == null || contains(["INFO", "WARN", "ERROR"], var.exception_level)
+    condition     = var.exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.exception_level)
     error_message = "exception_level must be one of INFO, WARN, or ERROR."
   }
 }
