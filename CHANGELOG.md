@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.5.0...v0.5.1) (2026-05-29)
+
+### 🐛 Bug Fixes
+
+* **gateway:** plan self runtime target policy ([eba96f1](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/eba96f1cb99ac1a8fe666e043cd5a45e6db8e4bd))
+
 ## [0.5.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.4.6...v0.5.0) (2026-05-15)
 
 ### 🚀 Features
