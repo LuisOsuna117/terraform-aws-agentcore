@@ -39,9 +39,16 @@ locals {
   role_arn  = var.create_role ? aws_iam_role.gateway[0].arn : var.role_arn
   role_name = var.create_role ? aws_iam_role.gateway[0].name : (var.role_arn != null ? element(reverse(split("/", var.role_arn)), 0) : null)
 
+  inferred_agent_runtime_target_keys = toset([
+    for key, target in var.mcp_targets : key
+    if try(trimspace(target.endpoint), "") == ""
+  ])
+
+  agent_runtime_target_keys = var.agent_runtime_target_keys == null ? local.inferred_agent_runtime_target_keys : var.agent_runtime_target_keys
+
   agent_runtime_targets = {
     for key, target in var.mcp_targets : key => target
-    if try(trimspace(target.agent_runtime_arn), "") != ""
+    if contains(local.agent_runtime_target_keys, key)
   }
 
   runtime_arn_parts = {
@@ -202,7 +209,7 @@ resource "aws_bedrockagentcore_gateway" "this" {
 # ==============================================================================
 
 resource "aws_iam_role_policy" "gateway_invoke_agent_runtime" {
-  count = length(local.agent_runtime_targets) > 0 ? 1 : 0
+  count = length(local.agent_runtime_target_keys) > 0 ? 1 : 0
 
   name = "${var.name}-invoke-agent-runtime"
   role = local.role_name
@@ -228,7 +235,7 @@ resource "aws_iam_role_policy" "gateway_invoke_agent_runtime" {
 }
 
 resource "time_sleep" "gateway_invoke_policy_propagation" {
-  count = length(local.agent_runtime_targets) > 0 ? 1 : 0
+  count = length(local.agent_runtime_target_keys) > 0 ? 1 : 0
 
   create_duration = "45s"
 
