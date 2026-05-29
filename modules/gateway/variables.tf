@@ -197,6 +197,17 @@ variable "mcp_targets" {
   }
 }
 
+variable "agent_runtime_target_keys" {
+  description = "Plan-known MCP target keys that represent AgentCore Runtime targets. When null, keys are inferred from targets without an explicit endpoint."
+  type        = set(string)
+  default     = null
+
+  validation {
+    condition     = var.agent_runtime_target_keys == null || length(setsubtract(var.agent_runtime_target_keys, toset(keys(var.mcp_targets)))) == 0
+    error_message = "agent_runtime_target_keys must only contain keys present in mcp_targets."
+  }
+}
+
 # ==============================================================================
 # Encryption & Advanced
 # ==============================================================================

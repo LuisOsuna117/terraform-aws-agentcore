@@ -52,6 +52,14 @@ locals {
     local.gateway_runtime_mcp_target,
   )
 
+  gateway_agent_runtime_target_keys = setunion(
+    toset([
+      for key, target in var.gateway_mcp_targets : key
+      if try(trimspace(target.endpoint), "") == ""
+    ]),
+    var.gateway_attach_runtime_target && var.create_runtime ? toset([local.gateway_runtime_target_key]) : toset([]),
+  )
+
   gateway_mcp_target_names = [
     for key, target in var.gateway_mcp_targets : coalesce(target.name, key)
   ]
@@ -231,6 +239,7 @@ module "gateway" {
   protocol_configuration     = var.gateway_protocol_configuration
   interceptor_configurations = var.gateway_interceptor_configurations
   mcp_targets                = local.effective_gateway_mcp_targets
+  agent_runtime_target_keys  = local.gateway_agent_runtime_target_keys
   kms_key_arn                = var.gateway_kms_key_arn
   exception_level            = var.gateway_exception_level
   tags                       = local.common_tags
