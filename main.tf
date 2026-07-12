@@ -6,6 +6,9 @@ locals {
   # Normalise the runtime name: AgentCore requires underscores, not hyphens.
   runtime_name = replace(coalesce(var.runtime_name, var.name), "-", "_")
 
+  # Code Interpreter follows the same naming constraint as Runtime.
+  code_interpreter_name = replace(coalesce(var.code_interpreter_name, var.name), "-", "_")
+
   # ECR repository name falls back to var.name if not explicitly set.
   ecr_repository_name = coalesce(var.ecr_repository_name, var.name)
 
@@ -14,6 +17,10 @@ locals {
 
   # Execution role ARN — from the module-created role or the caller-supplied one.
   execution_role_arn = var.create_execution_role ? aws_iam_role.agent_execution[0].arn : var.execution_role_arn
+
+  # Reuse the runtime execution role by default, while allowing a dedicated
+  # Code Interpreter execution role for least-privilege deployments.
+  code_interpreter_execution_role_arn = var.code_interpreter_execution_role_arn != null ? var.code_interpreter_execution_role_arn : local.execution_role_arn
 
   # Tags applied to every taggable resource.
   common_tags = merge(
@@ -90,6 +97,16 @@ resource "terraform_data" "validations" {
     precondition {
       condition     = !(var.network_mode == "VPC" && (length(var.vpc_security_group_ids) == 0 || length(var.vpc_subnet_ids) == 0))
       error_message = "vpc_security_group_ids and vpc_subnet_ids must both be non-empty when network_mode = \"VPC\"."
+    }
+
+    precondition {
+      condition     = !var.create_code_interpreter || var.code_interpreter_network_mode != "SANDBOX" || local.code_interpreter_execution_role_arn != null
+      error_message = "A Code Interpreter execution role is required in SANDBOX mode. Enable create_execution_role, set execution_role_arn, or set code_interpreter_execution_role_arn."
+    }
+
+    precondition {
+      condition     = !var.create_code_interpreter || var.code_interpreter_network_mode != "VPC" || (length(var.code_interpreter_vpc_security_group_ids) > 0 && length(var.code_interpreter_vpc_subnet_ids) > 0)
+      error_message = "code_interpreter_vpc_security_group_ids and code_interpreter_vpc_subnet_ids must both be non-empty when code_interpreter_network_mode = \"VPC\"."
     }
 
     precondition {
@@ -194,12 +211,42 @@ module "runtime" {
       AWS_REGION         = data.aws_region.current.id
       AWS_DEFAULT_REGION = data.aws_region.current.id
     },
+    var.create_code_interpreter ? {
+      # Module-defined convention: agent code can read this value to start and
+      # invoke sessions without hard-coding the generated resource identifier.
+      BEDROCK_AGENTCORE_CODE_INTERPRETER_ID = module.code_interpreter[0].code_interpreter_id
+    } : {},
     var.environment_variables,
   )
 
   depends_on = [
     terraform_data.validations,
     module.build,
+    aws_iam_role_policy.agent_execution,
+    aws_iam_role_policy.code_interpreter_invoke,
+    aws_iam_role_policy_attachment.agent_execution_managed,
+  ]
+}
+
+# ==============================================================================
+# Code Interpreter Submodule
+# ==============================================================================
+
+module "code_interpreter" {
+  count  = var.create_code_interpreter ? 1 : 0
+  source = "./modules/code-interpreter"
+
+  name               = local.code_interpreter_name
+  description        = var.code_interpreter_description
+  execution_role_arn = local.code_interpreter_execution_role_arn
+  network_mode       = var.code_interpreter_network_mode
+
+  vpc_security_group_ids = var.code_interpreter_vpc_security_group_ids
+  vpc_subnet_ids         = var.code_interpreter_vpc_subnet_ids
+  tags                   = local.common_tags
+
+  depends_on = [
+    terraform_data.validations,
     aws_iam_role_policy.agent_execution,
     aws_iam_role_policy_attachment.agent_execution_managed,
   ]
@@ -417,5 +464,31 @@ resource "aws_iam_role_policy" "agent_execution" {
       # Caller-supplied statements merged last so they can override defaults.
       var.additional_iam_statements,
     )
+  })
+}
+
+# Runtime access to the custom Code Interpreter. This policy is separate from
+# the baseline execution policy so it can target the generated custom ARN
+# without creating a dependency cycle during Code Interpreter creation.
+resource "aws_iam_role_policy" "code_interpreter_invoke" {
+  count = var.create_execution_role && var.create_runtime && var.create_code_interpreter ? 1 : 0
+
+  name = "${var.name}-code-interpreter-invoke"
+  role = aws_iam_role.agent_execution[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "CodeInterpreterSessions"
+      Effect = "Allow"
+      Action = [
+        "bedrock-agentcore:GetCodeInterpreterSession",
+        "bedrock-agentcore:InvokeCodeInterpreter",
+        "bedrock-agentcore:ListCodeInterpreterSessions",
+        "bedrock-agentcore:StartCodeInterpreterSession",
+        "bedrock-agentcore:StopCodeInterpreterSession",
+      ]
+      Resource = module.code_interpreter[0].code_interpreter_arn
+    }]
   })
 }

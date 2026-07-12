@@ -36,6 +36,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🔐 **JWT authorizer** — set `authorizer_discovery_url` to protect the runtime endpoint with OIDC/JWT auth, scoped by audience and client ID.
 - ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
 - 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
+- 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **Gateway and MCP targets** — set `create_gateway = true` to provision an `aws_bedrockagentcore_gateway`; add `gateway_mcp_targets` for AgentCore Runtime MCP servers or explicit HTTPS MCP endpoints.
 - 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
@@ -55,10 +56,11 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 ├── outputs.tf
 ├── versions.tf
 └── modules/
-    ├── build/       # ECR + S3 + CodeBuild + IAM (create_build_pipeline = true)
-    ├── runtime/     # aws_bedrockagentcore_agent_runtime
-    ├── memory/      # aws_bedrockagentcore_memory (create_memory = true)
-    └── gateway/     # aws_bedrockagentcore_gateway + MCP Gateway Targets (create_gateway = true)
+    ├── build/            # ECR + S3 + CodeBuild + IAM (create_build_pipeline = true)
+    ├── runtime/          # aws_bedrockagentcore_agent_runtime
+    ├── code-interpreter/ # aws_bedrockagentcore_code_interpreter (opt-in)
+    ├── memory/           # aws_bedrockagentcore_memory (create_memory = true)
+    └── gateway/          # aws_bedrockagentcore_gateway + MCP Gateway Targets (create_gateway = true)
 ```
 
 Each submodule under `modules/` can also be called independently if you only need a subset of resources.
@@ -71,10 +73,12 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Resource | Condition | Purpose |
 |---------------------------------------------|------------------------------------------------------|-----------------------------------------------------------------------|
-| `aws_iam_role` (execution) | `create_execution_role = true` | Runtime execution role assumed by the AgentCore service. |
+| `aws_iam_role` (execution) | `create_execution_role = true` | Execution role assumed by AgentCore Runtime and, by default, Code Interpreter. |
 | `aws_iam_role_policy` (execution) | `create_execution_role = true` | Least-privilege inline policy: ECR pull, CloudWatch Logs, X-Ray, Metrics, Bedrock, workload tokens. |
 | `aws_iam_role_policy_attachment` | `create_execution_role && attach_bedrock_fullaccess_policy` | Optional `BedrockAgentCoreFullAccess` managed policy attachment. |
 | `aws_bedrockagentcore_agent_runtime` | `create_runtime = true` | The AgentCore runtime that executes your agent container. |
+| `aws_bedrockagentcore_code_interpreter` | `create_code_interpreter = true` | Isolated managed environment where the agent can execute code. |
+| `aws_iam_role_policy` (Code Interpreter invoke) | `create_runtime && create_code_interpreter && create_execution_role` | Grants the runtime role session access to the created Code Interpreter ARN. |
 | `aws_ecr_repository` + policies | `create_build_pipeline = true` | Private container registry for agent images. |
 | `aws_codebuild_project` | `create_build_pipeline = true` | Builds the agent Docker image and pushes it to ECR. |
 | `aws_iam_role` (codebuild) | `create_build_pipeline = true` | Service role for the CodeBuild pipeline. |
@@ -89,7 +93,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 ## 🚫 What this module does NOT create
 
-- **VPC, subnets, or security groups** — when `network_mode = "VPC"`, you must supply `vpc_subnet_ids` and `vpc_security_group_ids`; the VPC and its components are out of scope for this module.
+- **VPC, subnets, or security groups** — when Runtime or Code Interpreter uses `VPC` mode, you must supply the corresponding subnet and security-group inputs; the VPC and its components are out of scope for this module.
 - **Bedrock model access** — enable foundation model access separately in the AWS console.
 - **KMS keys** — S3 and ECR use AWS-managed encryption by default. Pass `gateway_kms_key_arn` or `memory_encryption_key_arn` to use customer-managed keys you manage outside of this module.
 
@@ -115,6 +119,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_build"></a> [build](#module\_build) | ./modules/build | n/a |
+| <a name="module_code_interpreter"></a> [code\_interpreter](#module\_code\_interpreter) | ./modules/code-interpreter | n/a |
 | <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
 | <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
 | <a name="module_runtime"></a> [runtime](#module\_runtime) | ./modules/runtime | n/a |
@@ -125,6 +130,7 @@ Resources marked with a condition are only created when the corresponding flag i
 |------|------|
 | [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.code_interpreter_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.agent_execution_managed](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [terraform_data.validations](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
@@ -141,12 +147,19 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_authorizer_allowed_audience"></a> [authorizer\_allowed\_audience](#input\_authorizer\_allowed\_audience) | Set of allowed JWT audience values. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
 | <a name="input_authorizer_allowed_clients"></a> [authorizer\_allowed\_clients](#input\_authorizer\_allowed\_clients) | Set of allowed client IDs for JWT token validation. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
 | <a name="input_authorizer_discovery_url"></a> [authorizer\_discovery\_url](#input\_authorizer\_discovery\_url) | OIDC discovery URL for JWT authorisation on the runtime endpoint (must end with /.well-known/openid-configuration). When null, the endpoint is unauthenticated at the AgentCore layer. | `string` | `null` | no |
+| <a name="input_code_interpreter_description"></a> [code\_interpreter\_description](#input\_code\_interpreter\_description) | Human-readable description for the AgentCore Code Interpreter. | `string` | `"Managed by terraform-aws-agentcore."` | no |
+| <a name="input_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#input\_code\_interpreter\_execution\_role\_arn) | ARN of an IAM role for the Code Interpreter to assume. Defaults to the runtime execution role managed or supplied through execution\_role\_arn. | `string` | `null` | no |
+| <a name="input_code_interpreter_name"></a> [code\_interpreter\_name](#input\_code\_interpreter\_name) | Name for the AgentCore Code Interpreter. Defaults to var.name. Hyphens are automatically converted to underscores. | `string` | `null` | no |
+| <a name="input_code_interpreter_network_mode"></a> [code\_interpreter\_network\_mode](#input\_code\_interpreter\_network\_mode) | Network mode for the Code Interpreter. SANDBOX allows limited AWS service access, PUBLIC allows internet access, and VPC uses the supplied VPC configuration. | `string` | `"SANDBOX"` | no |
+| <a name="input_code_interpreter_vpc_security_group_ids"></a> [code\_interpreter\_vpc\_security\_group\_ids](#input\_code\_interpreter\_vpc\_security\_group\_ids) | Security group IDs attached to the Code Interpreter when code\_interpreter\_network\_mode = "VPC". | `list(string)` | `[]` | no |
+| <a name="input_code_interpreter_vpc_subnet_ids"></a> [code\_interpreter\_vpc\_subnet\_ids](#input\_code\_interpreter\_vpc\_subnet\_ids) | Subnet IDs where the Code Interpreter is placed when code\_interpreter\_network\_mode = "VPC". | `list(string)` | `[]` | no |
 | <a name="input_codebuild_build_timeout"></a> [codebuild\_build\_timeout](#input\_codebuild\_build\_timeout) | Maximum duration (in minutes) for a CodeBuild build before it is terminated. | `number` | `60` | no |
 | <a name="input_codebuild_compute_type"></a> [codebuild\_compute\_type](#input\_codebuild\_compute\_type) | Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html | `string` | `"BUILD_GENERAL1_LARGE"` | no |
 | <a name="input_codebuild_environment_image"></a> [codebuild\_environment\_image](#input\_codebuild\_environment\_image) | Docker image used for the CodeBuild build environment. | `string` | `"aws/codebuild/amazonlinux2-aarch64-standard:3.0"` | no |
 | <a name="input_codebuild_environment_type"></a> [codebuild\_environment\_type](#input\_codebuild\_environment\_type) | CodeBuild environment type. Should match the architecture of codebuild\_environment\_image (e.g. ARM\_CONTAINER for aarch64 images). | `string` | `"ARM_CONTAINER"` | no |
 | <a name="input_create_build_pipeline"></a> [create\_build\_pipeline](#input\_create\_build\_pipeline) | When true (default), creates the full CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. Set to false to use a pre-built image via image\_uri (Bring Your Own Image). | `bool` | `true` | no |
-| <a name="input_create_execution_role"></a> [create\_execution\_role](#input\_create\_execution\_role) | When true, the module creates an IAM execution role for the AgentCore runtime. Set to false to provide an existing role via execution\_role\_arn. | `bool` | `true` | no |
+| <a name="input_create_code_interpreter"></a> [create\_code\_interpreter](#input\_create\_code\_interpreter) | When true, creates an AgentCore Code Interpreter alongside the runtime. | `bool` | `false` | no |
+| <a name="input_create_execution_role"></a> [create\_execution\_role](#input\_create\_execution\_role) | When true, the module creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Set to false to provide an existing role via execution\_role\_arn. | `bool` | `true` | no |
 | <a name="input_create_gateway"></a> [create\_gateway](#input\_create\_gateway) | When true, creates an AgentCore Gateway resource using modules/gateway. Defaults to false. | `bool` | `false` | no |
 | <a name="input_create_memory"></a> [create\_memory](#input\_create\_memory) | When true, creates an AgentCore Memory resource using modules/memory. Defaults to false. | `bool` | `false` | no |
 | <a name="input_create_runtime"></a> [create\_runtime](#input\_create\_runtime) | When true (default), creates the AgentCore runtime resource. Set to false to provision only the build pipeline infrastructure without a runtime (useful for pre-baking images before the runtime is ready). | `bool` | `true` | no |
@@ -157,7 +170,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_ecr_pull_principals"></a> [ecr\_pull\_principals](#input\_ecr\_pull\_principals) | List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account\_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls. | `list(string)` | `[]` | no |
 | <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
-| <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set automatically. | `map(string)` | `{}` | no |
+| <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set; BEDROCK\_AGENTCORE\_CODE\_INTERPRETER\_ID is also set when create\_code\_interpreter = true. | `map(string)` | `{}` | no |
 | <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_runtime = true and create\_execution\_role = false. | `string` | `null` | no |
 | <a name="input_gateway_attach_runtime_target"></a> [gateway\_attach\_runtime\_target](#input\_gateway\_attach\_runtime\_target) | When true, attach the runtime created by this module call as an MCP Gateway Target. Uses the reserved target key "runtime" and requires create\_runtime = true and create\_gateway = true. | `bool` | `false` | no |
 | <a name="input_gateway_authorizer_configuration"></a> [gateway\_authorizer\_configuration](#input\_gateway\_authorizer\_configuration) | JWT authorizer configuration. Required when gateway\_authorizer\_type = "CUSTOM\_JWT". Shape: { discovery\_url, allowed\_audience, allowed\_clients }. | <pre>object({<br/>    discovery_url    = string<br/>    allowed_audience = optional(list(string), [])<br/>    allowed_clients  = optional(list(string), [])<br/>  })</pre> | `null` | no |
@@ -203,6 +216,11 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_agent_runtime_network_mode"></a> [agent\_runtime\_network\_mode](#output\_agent\_runtime\_network\_mode) | Network mode of the runtime (PUBLIC or VPC). Null when create\_runtime = false. |
 | <a name="output_agent_runtime_version"></a> [agent\_runtime\_version](#output\_agent\_runtime\_version) | Version identifier of the deployed AgentCore runtime. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_workload_identity_arn"></a> [agent\_runtime\_workload\_identity\_arn](#output\_agent\_runtime\_workload\_identity\_arn) | Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create\_runtime = false. |
+| <a name="output_code_interpreter_arn"></a> [code\_interpreter\_arn](#output\_code\_interpreter\_arn) | ARN of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#output\_code\_interpreter\_execution\_role\_arn) | ARN of the IAM execution role used by the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_id"></a> [code\_interpreter\_id](#output\_code\_interpreter\_id) | Unique identifier of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_name"></a> [code\_interpreter\_name](#output\_code\_interpreter\_name) | Resolved name of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_network_mode"></a> [code\_interpreter\_network\_mode](#output\_code\_interpreter\_network\_mode) | Network mode of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
 | <a name="output_codebuild_project_arn"></a> [codebuild\_project\_arn](#output\_codebuild\_project\_arn) | ARN of the CodeBuild project. Null when create\_build\_pipeline = false. |
 | <a name="output_codebuild_project_name"></a> [codebuild\_project\_name](#output\_codebuild\_project\_name) | Name of the CodeBuild project. Null when create\_build\_pipeline = false. |
 | <a name="output_codebuild_role_arn"></a> [codebuild\_role\_arn](#output\_codebuild\_role\_arn) | ARN of the IAM role used by the CodeBuild image-build project. Null when create\_build\_pipeline = false. |
@@ -320,6 +338,41 @@ module "agentcore" {
   memory_event_expiry_duration = 30
 }
 ```
+
+### Runtime with Code Interpreter
+
+Enable a custom Code Interpreter alongside the runtime with one flag:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name                    = "analytics-agent"
+  create_code_interpreter = true
+}
+```
+
+The default `SANDBOX` network mode limits external access. The module reuses its AgentCore execution role for the Code Interpreter, grants that role session access to the generated custom ARN, and injects the generated identifier into the runtime as `BEDROCK_AGENTCORE_CODE_INTERPRETER_ID`. Agent code can read that environment variable when starting and invoking Code Interpreter sessions.
+
+Use a dedicated execution role or a different network mode when needed:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name                               = "analytics-agent"
+  create_code_interpreter            = true
+  code_interpreter_execution_role_arn = aws_iam_role.code_interpreter.arn
+  code_interpreter_network_mode       = "VPC"
+
+  code_interpreter_vpc_subnet_ids         = module.vpc.private_subnets
+  code_interpreter_vpc_security_group_ids = [aws_security_group.code_interpreter.id]
+}
+```
+
+When `create_execution_role = false`, the supplied `execution_role_arn` must allow the Code Interpreter session actions on the custom Code Interpreter ARN. The module cannot modify a caller-managed role.
 
 ### Gateway only
 
@@ -731,7 +784,7 @@ AgentCore supports ARM64 architecture only. The default CodeBuild image (`amazon
 
 The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements`.
 
-The inline policy baseline grants:
+The module-created execution role receives:
 
 - ECR image pull (scoped to the module-created repository when `create_build_pipeline = true`)
 - CloudWatch Logs writes (scoped to `/aws/bedrock-agentcore/runtimes/*`)
@@ -739,10 +792,17 @@ The inline policy baseline grants:
 - CloudWatch Metrics (scoped to the `bedrock-agentcore` namespace)
 - `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` against `*` — narrow this via `additional_iam_statements` if needed
 - AgentCore workload access tokens
+- a separate inline policy for Code Interpreter session actions, scoped to the created custom ARN when both Runtime and Code Interpreter are enabled
+
+### 🧮 Code Interpreter
+
+`create_code_interpreter = true` provisions a custom `aws_bedrockagentcore_code_interpreter`. Its generated identifier is available through the `code_interpreter_id` output and the runtime environment variable `BEDROCK_AGENTCORE_CODE_INTERPRETER_ID`.
+
+The default `code_interpreter_network_mode = "SANDBOX"` provides limited AWS service access. Use `PUBLIC` only when executed code needs internet access. For `VPC`, both `code_interpreter_vpc_subnet_ids` and `code_interpreter_vpc_security_group_ids` are required. The execution role controls which AWS resources code running inside the interpreter can access; use `code_interpreter_execution_role_arn` to separate those permissions from the runtime role.
 
 ### 📦 Provider version
 
-The AgentCore resource types (`aws_bedrockagentcore_agent_runtime`, `aws_bedrockagentcore_memory`, `aws_bedrockagentcore_gateway`) were introduced in hashicorp/aws **v6.x**. The minimum tested version is **6.21**. Gateway targets are currently managed through `aws_cloudformation_stack` inside `modules/gateway` so the module can set the IAM credential provider `Service` and `Region` fields required for AgentCore Runtime MCP targets. AgentCore is a recently launched service; provider attributes may change in minor releases. Review the [AWS provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) before upgrading.
+The AgentCore resource types (`aws_bedrockagentcore_agent_runtime`, `aws_bedrockagentcore_code_interpreter`, `aws_bedrockagentcore_memory`, `aws_bedrockagentcore_gateway`) were introduced in hashicorp/aws **v6.x**. The minimum tested version is **6.21**. Gateway targets are currently managed through `aws_cloudformation_stack` inside `modules/gateway` so the module can set the IAM credential provider `Service` and `Region` fields required for AgentCore Runtime MCP targets. AgentCore is a recently launched service; provider attributes may change in minor releases. Review the [AWS provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) before upgrading.
 
 ### 🧩 Using submodules independently
 
@@ -756,6 +816,8 @@ module "my_memory" {
   event_expiry_duration = 60
 }
 ```
+
+The Code Interpreter submodule is also independently consumable at `LuisOsuna117/agentcore/aws//modules/code-interpreter`.
 
 ### No official AWS affiliation
 
