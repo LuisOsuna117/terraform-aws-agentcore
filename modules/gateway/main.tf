@@ -137,6 +137,11 @@ resource "terraform_data" "validations" {
       condition     = alltrue([for name in values(local.mcp_target_names) : can(regex("^([0-9a-zA-Z][-]?){1,100}$", name))])
       error_message = "Each MCP target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
     }
+
+    precondition {
+      condition     = var.agent_runtime_target_keys == null || length(setsubtract(var.agent_runtime_target_keys, toset(keys(var.mcp_targets)))) == 0
+      error_message = "agent_runtime_target_keys must only contain keys present in mcp_targets."
+    }
   }
 }
 

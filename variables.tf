@@ -93,7 +93,7 @@ variable "image_tag" {
 }
 
 variable "environment_variables" {
-  description = "Additional environment variables injected into the AgentCore runtime process. AWS_REGION and AWS_DEFAULT_REGION are always set automatically."
+  description = "Additional environment variables injected into the AgentCore runtime process. AWS_REGION and AWS_DEFAULT_REGION are always set; BEDROCK_AGENTCORE_CODE_INTERPRETER_ID is also set when create_code_interpreter = true."
   type        = map(string)
   default     = {}
 }
@@ -158,11 +158,67 @@ variable "request_header_allowlist" {
 }
 
 # ==============================================================================
+# Code Interpreter
+# ==============================================================================
+
+variable "create_code_interpreter" {
+  description = "When true, creates an AgentCore Code Interpreter alongside the runtime."
+  type        = bool
+  default     = false
+}
+
+variable "code_interpreter_name" {
+  description = "Name for the AgentCore Code Interpreter. Defaults to var.name. Hyphens are automatically converted to underscores."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.code_interpreter_name == null || can(regex("^[a-zA-Z][a-zA-Z0-9_-]{0,47}$", var.code_interpreter_name))
+    error_message = "code_interpreter_name must start with a letter, be at most 48 characters, and contain only letters, numbers, hyphens, or underscores."
+  }
+}
+
+variable "code_interpreter_description" {
+  description = "Human-readable description for the AgentCore Code Interpreter."
+  type        = string
+  default     = "Managed by terraform-aws-agentcore."
+}
+
+variable "code_interpreter_execution_role_arn" {
+  description = "ARN of an IAM role for the Code Interpreter to assume. Defaults to the runtime execution role managed or supplied through execution_role_arn."
+  type        = string
+  default     = null
+}
+
+variable "code_interpreter_network_mode" {
+  description = "Network mode for the Code Interpreter. SANDBOX allows limited AWS service access, PUBLIC allows internet access, and VPC uses the supplied VPC configuration."
+  type        = string
+  default     = "SANDBOX"
+
+  validation {
+    condition     = contains(["PUBLIC", "SANDBOX", "VPC"], var.code_interpreter_network_mode)
+    error_message = "code_interpreter_network_mode must be one of: PUBLIC, SANDBOX, VPC."
+  }
+}
+
+variable "code_interpreter_vpc_security_group_ids" {
+  description = "Security group IDs attached to the Code Interpreter when code_interpreter_network_mode = \"VPC\"."
+  type        = list(string)
+  default     = []
+}
+
+variable "code_interpreter_vpc_subnet_ids" {
+  description = "Subnet IDs where the Code Interpreter is placed when code_interpreter_network_mode = \"VPC\"."
+  type        = list(string)
+  default     = []
+}
+
+# ==============================================================================
 # IAM — Execution Role
 # ==============================================================================
 
 variable "create_execution_role" {
-  description = "When true, the module creates an IAM execution role for the AgentCore runtime. Set to false to provide an existing role via execution_role_arn."
+  description = "When true, the module creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Set to false to provide an existing role via execution_role_arn."
   type        = bool
   default     = true
 }

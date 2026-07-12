@@ -33,6 +33,35 @@ output "agent_runtime_workload_identity_arn" {
 }
 
 # ==============================================================================
+# AgentCore Code Interpreter
+# ==============================================================================
+
+output "code_interpreter_id" {
+  description = "Unique identifier of the AgentCore Code Interpreter. Null when create_code_interpreter = false."
+  value       = var.create_code_interpreter ? module.code_interpreter[0].code_interpreter_id : null
+}
+
+output "code_interpreter_arn" {
+  description = "ARN of the AgentCore Code Interpreter. Null when create_code_interpreter = false."
+  value       = var.create_code_interpreter ? module.code_interpreter[0].code_interpreter_arn : null
+}
+
+output "code_interpreter_name" {
+  description = "Resolved name of the AgentCore Code Interpreter. Null when create_code_interpreter = false."
+  value       = var.create_code_interpreter ? module.code_interpreter[0].code_interpreter_name : null
+}
+
+output "code_interpreter_network_mode" {
+  description = "Network mode of the AgentCore Code Interpreter. Null when create_code_interpreter = false."
+  value       = var.create_code_interpreter ? var.code_interpreter_network_mode : null
+}
+
+output "code_interpreter_execution_role_arn" {
+  description = "ARN of the IAM execution role used by the AgentCore Code Interpreter. Null when create_code_interpreter = false."
+  value       = var.create_code_interpreter ? module.code_interpreter[0].execution_role_arn : null
+}
+
+# ==============================================================================
 # Image
 # ==============================================================================
 
