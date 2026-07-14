@@ -39,17 +39,62 @@ locals {
   role_arn  = var.create_role ? aws_iam_role.gateway[0].arn : var.role_arn
   role_name = var.create_role ? aws_iam_role.gateway[0].name : (var.role_arn != null ? element(reverse(split("/", var.role_arn)), 0) : null)
 
+  legacy_mcp_targets = {
+    for key, target in var.mcp_targets : key => {
+      target_type              = "MCP"
+      name                     = target.name
+      description              = target.description
+      endpoint                 = target.endpoint
+      agent_runtime_arn        = target.agent_runtime_arn
+      qualifier                = target.qualifier
+      schema                   = null
+      allowed_query_parameters = target.allowed_query_parameters
+      allowed_request_headers  = target.allowed_request_headers
+      allowed_response_headers = target.allowed_response_headers
+    }
+  }
+
+  all_targets = merge(local.legacy_mcp_targets, {
+    for key, target in var.targets : key => {
+      target_type              = upper(target.target_type)
+      name                     = target.name
+      description              = target.description
+      endpoint                 = target.endpoint
+      agent_runtime_arn        = target.agent_runtime_arn
+      qualifier                = target.qualifier
+      schema                   = target.schema
+      allowed_query_parameters = target.allowed_query_parameters
+      allowed_request_headers  = target.allowed_request_headers
+      allowed_response_headers = target.allowed_response_headers
+    }
+  })
+
+  mcp_targets = {
+    for key, target in local.all_targets : key => target
+    if target.target_type == "MCP"
+  }
+
+  agent_targets = {
+    for key, target in local.all_targets : key => target
+    if target.target_type == "AGENT"
+  }
+
+  effective_protocol_type = var.protocol_type != null ? var.protocol_type : (length(local.mcp_targets) > 0 ? "MCP" : null)
+
   inferred_agent_runtime_target_keys = toset([
-    for key, target in var.mcp_targets : key
+    for key, target in local.mcp_targets : key
     if try(trimspace(target.endpoint), "") == ""
   ])
 
-  agent_runtime_target_keys = var.agent_runtime_target_keys == null ? local.inferred_agent_runtime_target_keys : var.agent_runtime_target_keys
+  mcp_agent_runtime_target_keys = var.agent_runtime_target_keys == null ? local.inferred_agent_runtime_target_keys : var.agent_runtime_target_keys
 
-  agent_runtime_targets = {
-    for key, target in var.mcp_targets : key => target
-    if contains(local.agent_runtime_target_keys, key)
+  mcp_agent_runtime_targets = {
+    for key, target in local.mcp_targets : key => target
+    if contains(local.mcp_agent_runtime_target_keys, key)
   }
+
+  agent_runtime_targets     = merge(local.mcp_agent_runtime_targets, local.agent_targets)
+  agent_runtime_target_keys = toset(keys(local.agent_runtime_targets))
 
   runtime_arn_parts = {
     for key, target in local.agent_runtime_targets : key => split(":", target.agent_runtime_arn)
@@ -78,11 +123,11 @@ locals {
 
   mcp_target_endpoints = merge(
     {
-      for key, target in var.mcp_targets : key => trimspace(target.endpoint)
+      for key, target in local.mcp_targets : key => trimspace(target.endpoint)
       if try(trimspace(target.endpoint), "") != ""
     },
     {
-      for key, target in local.agent_runtime_targets : key => format(
+      for key, target in local.mcp_agent_runtime_targets : key => format(
         "https://bedrock-agentcore.%s.%s/runtimes/%s/invocations?qualifier=%s&accountId=%s",
         data.aws_region.current.id,
         data.aws_partition.current.dns_suffix,
@@ -93,32 +138,32 @@ locals {
     },
   )
 
-  raw_mcp_target_names = {
-    for key, target in var.mcp_targets : key => substr(replace(coalesce(target.name, key), "/[^0-9A-Za-z-]/", "-"), 0, 93)
+  raw_target_names = {
+    for key, target in local.all_targets : key => substr(replace(coalesce(target.name, key), "/[^0-9A-Za-z-]/", "-"), 0, 93)
   }
 
-  mcp_target_names = {
-    for key, name in local.raw_mcp_target_names : key => can(regex("^[0-9A-Za-z]", name)) ? name : "target-${name}"
+  target_names = {
+    for key, name in local.raw_target_names : key => can(regex("^[0-9A-Za-z]", name)) ? name : "target-${name}"
   }
 
-  mcp_target_metadata = {
-    for key, target in var.mcp_targets : key => merge(
+  target_metadata = {
+    for key, target in local.all_targets : key => merge(
       length(target.allowed_query_parameters) > 0 ? { AllowedQueryParameters = target.allowed_query_parameters } : {},
       length(target.allowed_request_headers) > 0 ? { AllowedRequestHeaders = target.allowed_request_headers } : {},
       length(target.allowed_response_headers) > 0 ? { AllowedResponseHeaders = target.allowed_response_headers } : {},
     )
   }
 
-  mcp_target_stack_name_parts = {
-    for key in keys(var.mcp_targets) : key => {
+  target_stack_name_parts = {
+    for key in keys(local.all_targets) : key => {
       name = substr(replace(var.name, "/[^0-9A-Za-z-]/", "-"), 0, 60)
       key  = substr(replace(key, "/[^0-9A-Za-z-]/", "-"), 0, 32)
       hash = substr(sha1(key), 0, 8)
     }
   }
 
-  mcp_target_stack_names = {
-    for key, parts in local.mcp_target_stack_name_parts : key => substr("agentcore-${parts.name}-${parts.key}-${parts.hash}-target", 0, 128)
+  target_stack_names = {
+    for key, parts in local.target_stack_name_parts : key => substr("agentcore-${parts.name}-${parts.key}-${parts.hash}-target", 0, 128)
   }
 }
 
@@ -134,13 +179,43 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = alltrue([for name in values(local.mcp_target_names) : can(regex("^([0-9a-zA-Z][-]?){1,100}$", name))])
-      error_message = "Each MCP target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+      condition     = alltrue([for name in values(local.target_names) : can(regex("^([0-9a-zA-Z][-]?){1,100}$", name))])
+      error_message = "Each target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
     }
 
     precondition {
-      condition     = var.agent_runtime_target_keys == null || length(setsubtract(var.agent_runtime_target_keys, toset(keys(var.mcp_targets)))) == 0
-      error_message = "agent_runtime_target_keys must only contain keys present in mcp_targets."
+      condition     = length(distinct(values(local.target_names))) == length(local.target_names)
+      error_message = "Each Gateway target must resolve to a unique name."
+    }
+
+    precondition {
+      condition     = var.agent_runtime_target_keys == null || length(setsubtract(var.agent_runtime_target_keys, toset(keys(local.mcp_targets)))) == 0
+      error_message = "agent_runtime_target_keys must only contain MCP target keys."
+    }
+
+    precondition {
+      condition     = length(setintersection(toset(keys(var.targets)), toset(keys(var.mcp_targets)))) == 0
+      error_message = "targets and the deprecated mcp_targets alias must not use the same map key."
+    }
+
+    precondition {
+      condition     = !(length(local.mcp_targets) > 0 && length(local.agent_targets) > 0)
+      error_message = "A gateway cannot mix MCP aggregation targets and AGENT HTTP targets. Use separate gateways."
+    }
+
+    precondition {
+      condition     = length(local.agent_targets) == 0 || local.effective_protocol_type == null
+      error_message = "AGENT targets require protocol_type = null."
+    }
+
+    precondition {
+      condition     = length(local.mcp_targets) == 0 || local.effective_protocol_type == "MCP"
+      error_message = "MCP targets require protocol_type = \"MCP\" (it is inferred when protocol_type is null)."
+    }
+
+    precondition {
+      condition     = var.protocol_configuration == null || local.effective_protocol_type == "MCP"
+      error_message = "protocol_configuration is only valid for an MCP gateway."
     }
   }
 }
@@ -155,7 +230,7 @@ resource "aws_bedrockagentcore_gateway" "this" {
 
   description     = var.description
   authorizer_type = var.authorizer_type
-  protocol_type   = var.protocol_type
+  protocol_type   = local.effective_protocol_type
   exception_level = var.exception_level
   kms_key_arn     = var.kms_key_arn
 
@@ -259,9 +334,9 @@ resource "time_sleep" "gateway_invoke_policy_propagation" {
 # ==============================================================================
 
 resource "aws_cloudformation_stack" "gateway_target" {
-  for_each = var.mcp_targets
+  for_each = local.mcp_targets
 
-  name               = local.mcp_target_stack_names[each.key]
+  name               = local.target_stack_names[each.key]
   timeout_in_minutes = 30
 
   template_body = jsonencode({
@@ -273,7 +348,7 @@ resource "aws_cloudformation_stack" "gateway_target" {
         Properties = merge(
           {
             GatewayIdentifier = aws_bedrockagentcore_gateway.this.gateway_id
-            Name              = local.mcp_target_names[each.key]
+            Name              = local.target_names[each.key]
             TargetConfiguration = {
               Mcp = {
                 McpServer = {
@@ -283,7 +358,7 @@ resource "aws_cloudformation_stack" "gateway_target" {
             }
           },
           try(trimspace(each.value.description), "") != "" ? { Description = trimspace(each.value.description) } : {},
-          contains(keys(local.agent_runtime_targets), each.key) ? {
+          contains(keys(local.mcp_agent_runtime_targets), each.key) ? {
             CredentialProviderConfigurations = [
               {
                 CredentialProviderType = "GATEWAY_IAM_ROLE"
@@ -296,7 +371,82 @@ resource "aws_cloudformation_stack" "gateway_target" {
               },
             ]
           } : {},
-          length(local.mcp_target_metadata[each.key]) > 0 ? { MetadataConfiguration = local.mcp_target_metadata[each.key] } : {},
+          length(local.target_metadata[each.key]) > 0 ? { MetadataConfiguration = local.target_metadata[each.key] } : {},
+        )
+      }
+    }
+    Outputs = {
+      TargetId = {
+        Value = {
+          "Fn::GetAtt" = ["GatewayTarget", "TargetId"]
+        }
+      }
+    }
+  })
+
+  tags = var.tags
+
+  depends_on = [
+    aws_bedrockagentcore_gateway.this,
+    aws_iam_role_policy.gateway_invoke_agent_runtime,
+    time_sleep.gateway_invoke_policy_propagation,
+    terraform_data.validations,
+  ]
+}
+
+# Agent targets route requests directly to an AgentCore Runtime without MCP
+# aggregation. Their parent gateway intentionally has no protocol_type.
+resource "aws_cloudformation_stack" "agent_gateway_target" {
+  for_each = local.agent_targets
+
+  name               = local.target_stack_names[each.key]
+  timeout_in_minutes = 30
+
+  template_body = jsonencode({
+    AWSTemplateFormatVersion = "2010-09-09"
+    Description              = "AgentCore Gateway agent target managed by terraform-aws-agentcore."
+    Resources = {
+      GatewayTarget = {
+        Type = "AWS::BedrockAgentCore::GatewayTarget"
+        Properties = merge(
+          {
+            GatewayIdentifier = aws_bedrockagentcore_gateway.this.gateway_id
+            Name              = local.target_names[each.key]
+            TargetConfiguration = {
+              Http = {
+                AgentcoreRuntime = merge(
+                  {
+                    Arn       = trimspace(each.value.agent_runtime_arn)
+                    Qualifier = coalesce(each.value.qualifier, "DEFAULT")
+                  },
+                  each.value.schema != null ? {
+                    Schema = {
+                      Source = merge(
+                        try(trimspace(each.value.schema.inline_payload), "") != "" ? {
+                          InlinePayload = each.value.schema.inline_payload
+                        } : {},
+                        try(each.value.schema.s3, null) != null ? {
+                          S3 = merge(
+                            { Uri = each.value.schema.s3.uri },
+                            try(trimspace(each.value.schema.s3.bucket_owner_account_id), "") != "" ? {
+                              BucketOwnerAccountId = each.value.schema.s3.bucket_owner_account_id
+                            } : {},
+                          )
+                        } : {},
+                      )
+                    }
+                  } : {},
+                )
+              }
+            }
+            CredentialProviderConfigurations = [
+              {
+                CredentialProviderType = "GATEWAY_IAM_ROLE"
+              },
+            ]
+          },
+          try(trimspace(each.value.description), "") != "" ? { Description = trimspace(each.value.description) } : {},
+          length(local.target_metadata[each.key]) > 0 ? { MetadataConfiguration = local.target_metadata[each.key] } : {},
         )
       }
     }

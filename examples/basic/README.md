@@ -47,7 +47,7 @@ module.
 | Requirement | Version |
 |---|---|
 | OpenTofu or Terraform | `>= 1.8` |
-| hashicorp/aws provider | `>= 6.21` |
+| hashicorp/aws provider | `>= 6.48` |
 | AWS CLI v2 | latest |
 | bash | any |
 

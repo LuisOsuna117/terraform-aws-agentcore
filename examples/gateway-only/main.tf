@@ -1,8 +1,10 @@
 # ==============================================================================
 # Example: AgentCore Gateway Only
 #
-# Provisions a standalone AgentCore MCP Gateway with AWS IAM inbound auth and
-# no targets. Add targets later by setting gateway_mcp_targets.
+# Provisions a standalone general AgentCore Gateway with AWS IAM inbound auth
+# and no targets. Add targets later with gateway_targets. Set
+# gateway_protocol_type = "MCP" when the empty gateway is intended for MCP
+# aggregation targets.
 #
 # Run:
 #   tofu init

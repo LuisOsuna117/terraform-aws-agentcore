@@ -13,8 +13,13 @@ output "gateway_arn" {
 }
 
 output "gateway_url" {
-  description = "URL endpoint for the AgentCore Gateway. Use this to connect MCP clients."
+  description = "URL endpoint for the AgentCore Gateway."
   value       = aws_bedrockagentcore_gateway.this.gateway_url
+}
+
+output "gateway_protocol_type" {
+  description = "Effective Gateway aggregation protocol. MCP for aggregation gateways, null for general HTTP gateways."
+  value       = local.effective_protocol_type
 }
 
 output "workload_identity_arn" {
@@ -23,13 +28,24 @@ output "workload_identity_arn" {
 }
 
 output "gateway_target_ids" {
-  description = "Map of MCP target keys to AgentCore Gateway target IDs."
-  value       = { for key, stack in aws_cloudformation_stack.gateway_target : key => stack.outputs["TargetId"] }
+  description = "Map of target keys to AgentCore Gateway target IDs."
+  value = merge(
+    { for key, stack in aws_cloudformation_stack.gateway_target : key => try(stack.outputs["TargetId"], null) },
+    { for key, stack in aws_cloudformation_stack.agent_gateway_target : key => try(stack.outputs["TargetId"], null) },
+  )
 }
 
 output "gateway_target_endpoints" {
   description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets."
   value       = local.mcp_target_endpoints
+}
+
+output "gateway_agent_target_invocation_urls" {
+  description = "Map of AGENT target keys to their path-routed Gateway invocation URLs."
+  value = {
+    for key in keys(local.agent_targets) :
+    key => "${trimsuffix(aws_bedrockagentcore_gateway.this.gateway_url, "/")}/${local.target_names[key]}/invocations"
+  }
 }
 
 # ==============================================================================

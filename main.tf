@@ -40,23 +40,37 @@ locals {
   # the gateway created by this same call. The stable map key is "runtime".
   gateway_runtime_target_key  = "runtime"
   gateway_runtime_target_name = coalesce(var.gateway_runtime_target.name, local.gateway_runtime_target_key)
+  gateway_has_mcp_targets = length(var.gateway_mcp_targets) > 0 || anytrue([
+    for target in values(var.gateway_targets) : upper(target.target_type) == "MCP"
+  ])
+  gateway_has_agent_targets = anytrue([
+    for target in values(var.gateway_targets) : upper(target.target_type) == "AGENT"
+  ])
+  gateway_runtime_target_type = coalesce(
+    try(upper(var.gateway_runtime_target.target_type), null),
+    var.gateway_protocol_type == "MCP" || local.gateway_has_mcp_targets ? "MCP" : (
+      local.gateway_has_agent_targets ? "AGENT" : (var.server_protocol == "MCP" ? "MCP" : "AGENT")
+    ),
+  )
 
-  gateway_runtime_mcp_target = var.gateway_attach_runtime_target && var.create_runtime ? {
+  gateway_runtime_target = var.gateway_attach_runtime_target && var.create_runtime ? {
     (local.gateway_runtime_target_key) = {
+      target_type              = local.gateway_runtime_target_type
       name                     = local.gateway_runtime_target_name
       description              = var.gateway_runtime_target.description
       endpoint                 = null
       agent_runtime_arn        = module.runtime[0].agent_runtime_arn
       qualifier                = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
+      schema                   = var.gateway_runtime_target.schema
       allowed_query_parameters = var.gateway_runtime_target.allowed_query_parameters
       allowed_request_headers  = var.gateway_runtime_target.allowed_request_headers
       allowed_response_headers = var.gateway_runtime_target.allowed_response_headers
     }
   } : {}
 
-  effective_gateway_mcp_targets = merge(
-    var.gateway_mcp_targets,
-    local.gateway_runtime_mcp_target,
+  effective_gateway_targets = merge(
+    var.gateway_targets,
+    local.gateway_runtime_target,
   )
 
   gateway_agent_runtime_target_keys = setunion(
@@ -64,12 +78,17 @@ locals {
       for key, target in var.gateway_mcp_targets : key
       if try(trimspace(target.endpoint), "") == ""
     ]),
-    var.gateway_attach_runtime_target && var.create_runtime ? toset([local.gateway_runtime_target_key]) : toset([]),
+    toset([
+      for key, target in var.gateway_targets : key
+      if upper(target.target_type) == "MCP" && try(trimspace(target.endpoint), "") == ""
+    ]),
+    var.gateway_attach_runtime_target && var.create_runtime && local.gateway_runtime_target_type == "MCP" ? toset([local.gateway_runtime_target_key]) : toset([]),
   )
 
-  gateway_mcp_target_names = [
-    for key, target in var.gateway_mcp_targets : coalesce(target.name, key)
-  ]
+  gateway_target_names = concat(
+    [for key, target in var.gateway_mcp_targets : coalesce(target.name, key)],
+    [for key, target in var.gateway_targets : coalesce(target.name, key)],
+  )
 }
 
 # ==============================================================================
@@ -110,8 +129,8 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = var.create_gateway || length(var.gateway_mcp_targets) == 0
-      error_message = "gateway_mcp_targets requires create_gateway = true."
+      condition     = var.create_gateway || (length(var.gateway_targets) == 0 && length(var.gateway_mcp_targets) == 0)
+      error_message = "gateway_targets and gateway_mcp_targets require create_gateway = true."
     }
 
     precondition {
@@ -125,13 +144,23 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = !var.gateway_attach_runtime_target || !contains(keys(var.gateway_mcp_targets), local.gateway_runtime_target_key)
-      error_message = "gateway_mcp_targets cannot use key \"runtime\" when gateway_attach_runtime_target = true; that key is reserved for the module-created runtime target."
+      condition     = !var.gateway_attach_runtime_target || (!contains(keys(var.gateway_targets), local.gateway_runtime_target_key) && !contains(keys(var.gateway_mcp_targets), local.gateway_runtime_target_key))
+      error_message = "gateway_targets and gateway_mcp_targets cannot use key \"runtime\" when gateway_attach_runtime_target = true; that key is reserved for the module-created runtime target."
     }
 
     precondition {
-      condition     = !var.gateway_attach_runtime_target || !contains(local.gateway_mcp_target_names, local.gateway_runtime_target_name)
-      error_message = "gateway_runtime_target.name must not collide with any resolved gateway_mcp_targets target name."
+      condition     = !var.gateway_attach_runtime_target || !contains(local.gateway_target_names, local.gateway_runtime_target_name)
+      error_message = "gateway_runtime_target.name must not collide with any resolved gateway target name."
+    }
+
+    precondition {
+      condition     = length(setintersection(toset(keys(var.gateway_targets)), toset(keys(var.gateway_mcp_targets)))) == 0
+      error_message = "gateway_targets and gateway_mcp_targets must not use the same map key."
+    }
+
+    precondition {
+      condition     = var.gateway_runtime_target.schema == null || local.gateway_runtime_target_type == "AGENT"
+      error_message = "gateway_runtime_target.schema is only supported when the effective target type is AGENT."
     }
   }
 }
@@ -285,7 +314,8 @@ module "gateway" {
   protocol_type              = var.gateway_protocol_type
   protocol_configuration     = var.gateway_protocol_configuration
   interceptor_configurations = var.gateway_interceptor_configurations
-  mcp_targets                = local.effective_gateway_mcp_targets
+  targets                    = local.effective_gateway_targets
+  mcp_targets                = var.gateway_mcp_targets
   agent_runtime_target_keys  = local.gateway_agent_runtime_target_keys
   kms_key_arn                = var.gateway_kms_key_arn
   exception_level            = var.gateway_exception_level

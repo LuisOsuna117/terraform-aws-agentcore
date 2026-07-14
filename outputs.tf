@@ -185,19 +185,29 @@ output "gateway_url" {
   value       = var.create_gateway ? module.gateway[0].gateway_url : null
 }
 
+output "gateway_protocol_type" {
+  description = "Effective Gateway aggregation protocol. MCP for aggregation gateways, null for general HTTP gateways or when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_protocol_type : null
+}
+
 output "gateway_workload_identity_arn" {
   description = "Workload identity ARN associated with the gateway. Null when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].workload_identity_arn : null
 }
 
 output "gateway_target_ids" {
-  description = "Map of MCP target keys to AgentCore Gateway target IDs. Empty when create_gateway = false."
+  description = "Map of target keys to AgentCore Gateway target IDs. Empty when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].gateway_target_ids : {}
 }
 
 output "gateway_target_endpoints" {
   description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].gateway_target_endpoints : {}
+}
+
+output "gateway_agent_target_invocation_urls" {
+  description = "Map of AGENT target keys to their path-routed Gateway invocation URLs. Empty when create_gateway = false."
+  value       = var.create_gateway ? module.gateway[0].gateway_agent_target_invocation_urls : {}
 }
 
 output "gateway_runtime_target_id" {
