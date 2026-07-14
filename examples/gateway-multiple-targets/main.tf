@@ -25,14 +25,16 @@ module "agentcore" {
 
   gateway_authorizer_type = "AWS_IAM"
 
-  gateway_mcp_targets = {
+  gateway_targets = {
     datadog = {
+      target_type       = "MCP"
       description       = "AgentCore Runtime MCP server."
       agent_runtime_arn = var.agent_runtime_arn
       qualifier         = "DEFAULT"
     }
 
     external = {
+      target_type              = "MCP"
       description              = "Explicit non-AgentCore MCP server endpoint."
       endpoint                 = var.external_mcp_endpoint
       allowed_request_headers  = ["x-request-id"]

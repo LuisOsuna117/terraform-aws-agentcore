@@ -471,9 +471,14 @@ variable "gateway_authorizer_configuration" {
 }
 
 variable "gateway_protocol_type" {
-  description = "Protocol type for the gateway. Currently only \"MCP\" is supported."
+  description = "Optional gateway aggregation protocol. Set to \"MCP\" for MCP aggregation, or null for general HTTP targets such as AgentCore Runtime agents. MCP is inferred when an MCP target is configured."
   type        = string
-  default     = "MCP"
+  default     = null
+
+  validation {
+    condition     = var.gateway_protocol_type == null ? true : var.gateway_protocol_type == "MCP"
+    error_message = "gateway_protocol_type must be \"MCP\" or null."
+  }
 }
 
 variable "gateway_protocol_configuration" {
@@ -496,8 +501,102 @@ variable "gateway_interceptor_configurations" {
   default = []
 }
 
+variable "gateway_targets" {
+  description = "Map of general Gateway Targets. Set target_type to \"MCP\" or \"AGENT\". MCP targets use endpoint or agent_runtime_arn; AGENT targets require agent_runtime_arn and route directly without MCP aggregation."
+  type = map(object({
+    target_type       = string
+    name              = optional(string)
+    description       = optional(string)
+    endpoint          = optional(string)
+    agent_runtime_arn = optional(string)
+    qualifier         = optional(string, "DEFAULT")
+    schema = optional(object({
+      inline_payload = optional(string)
+      s3 = optional(object({
+        uri                     = string
+        bucket_owner_account_id = optional(string)
+      }))
+    }))
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) : contains(["MCP", "AGENT"], upper(target.target_type))
+    ])
+    error_message = "Each gateway_targets entry target_type must be either \"MCP\" or \"AGENT\"."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      upper(target.target_type) != "MCP" || length(compact([
+        try(trimspace(target.endpoint), ""),
+        try(trimspace(target.agent_runtime_arn), ""),
+      ])) == 1
+    ])
+    error_message = "Each MCP gateway_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      upper(target.target_type) != "AGENT" || (
+        try(trimspace(target.agent_runtime_arn), "") != "" &&
+        try(trimspace(target.endpoint), "") == ""
+      )
+    ])
+    error_message = "Each AGENT gateway_targets entry must provide agent_runtime_arn and must not set endpoint."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
+    ])
+    error_message = "Each explicit gateway_targets endpoint must start with https://."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
+    ])
+    error_message = "Each gateway_targets agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
+    ])
+    error_message = "Each gateway_targets target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      target.schema == null || length(compact([
+        try(trimspace(target.schema.inline_payload), ""),
+        try(trimspace(target.schema.s3.uri), ""),
+      ])) == 1
+    ])
+    error_message = "Each gateway_targets schema must provide exactly one of inline_payload or s3."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) : target.schema == null || upper(target.target_type) == "AGENT"
+    ])
+    error_message = "gateway_targets.schema is only supported for AGENT targets."
+  }
+}
+
 variable "gateway_mcp_targets" {
-  description = "Map of MCP Gateway Targets to attach when create_gateway = true. Each target must set exactly one of endpoint or agent_runtime_arn. AgentCore Runtime targets derive the endpoint and use gateway IAM role SigV4 auth."
+  description = "Deprecated compatibility alias for MCP Gateway Targets. Prefer gateway_targets with target_type = \"MCP\"."
   type = map(object({
     name                     = optional(string)
     description              = optional(string)
@@ -547,17 +646,25 @@ variable "gateway_mcp_targets" {
 }
 
 variable "gateway_attach_runtime_target" {
-  description = "When true, attach the runtime created by this module call as an MCP Gateway Target. Uses the reserved target key \"runtime\" and requires create_runtime = true and create_gateway = true."
+  description = "When true, attach the runtime created by this module call as a Gateway Target. Uses key \"runtime\". The target type comes from gateway_runtime_target.target_type, or is inferred from the gateway/runtime configuration."
   type        = bool
   default     = false
 }
 
 variable "gateway_runtime_target" {
-  description = "Configuration for the module-created runtime MCP Gateway Target when gateway_attach_runtime_target = true. The generated target uses map key \"runtime\" and defaults name to \"runtime\"."
+  description = "Configuration for the module-created runtime Gateway Target when gateway_attach_runtime_target = true. target_type accepts MCP or AGENT; when null, MCP is selected only for an explicitly MCP gateway or MCP runtime, otherwise AGENT."
   type = object({
-    name                     = optional(string)
-    description              = optional(string)
-    qualifier                = optional(string, "DEFAULT")
+    target_type = optional(string)
+    name        = optional(string)
+    description = optional(string)
+    qualifier   = optional(string, "DEFAULT")
+    schema = optional(object({
+      inline_payload = optional(string)
+      s3 = optional(object({
+        uri                     = string
+        bucket_owner_account_id = optional(string)
+      }))
+    }))
     allowed_query_parameters = optional(list(string), [])
     allowed_request_headers  = optional(list(string), [])
     allowed_response_headers = optional(list(string), [])
@@ -568,6 +675,19 @@ variable "gateway_runtime_target" {
   validation {
     condition     = var.gateway_runtime_target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", var.gateway_runtime_target.name))
     error_message = "gateway_runtime_target.name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+
+  validation {
+    condition     = var.gateway_runtime_target.target_type == null ? true : contains(["MCP", "AGENT"], upper(var.gateway_runtime_target.target_type))
+    error_message = "gateway_runtime_target.target_type must be \"MCP\", \"AGENT\", or null."
+  }
+
+  validation {
+    condition = var.gateway_runtime_target.schema == null || length(compact([
+      try(trimspace(var.gateway_runtime_target.schema.inline_payload), ""),
+      try(trimspace(var.gateway_runtime_target.schema.s3.uri), ""),
+    ])) == 1
+    error_message = "gateway_runtime_target.schema must provide exactly one of inline_payload or s3."
   }
 }
 

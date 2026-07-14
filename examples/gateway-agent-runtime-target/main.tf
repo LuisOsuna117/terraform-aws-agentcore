@@ -1,10 +1,9 @@
 # ==============================================================================
-# Example: Gateway with AgentCore Runtime MCP Target
+# Example: General Gateway with AgentCore Runtime Agent Target
 #
-# Provisions a standalone AgentCore MCP Gateway and attaches one Gateway Target
-# backed by an AgentCore Runtime. The module derives the Runtime invoke endpoint,
-# configures outbound SigV4 auth with the gateway IAM role, and grants
-# bedrock-agentcore:InvokeAgentRuntime on the runtime ARN.
+# Provisions a standalone general AgentCore Gateway (no MCP aggregation protocol)
+# and attaches one AGENT target backed by an AgentCore Runtime. Requests are
+# routed directly to /runtime/invocations without MCP protocol translation.
 #
 # Run:
 #   tofu init
@@ -26,9 +25,10 @@ module "agentcore" {
 
   gateway_authorizer_type = "AWS_IAM"
 
-  gateway_mcp_targets = {
+  gateway_targets = {
     runtime = {
-      description       = "AgentCore Runtime MCP server."
+      target_type       = "AGENT"
+      description       = "AgentCore Runtime agent routed directly over HTTP."
       agent_runtime_arn = var.agent_runtime_arn
       qualifier         = var.qualifier
     }

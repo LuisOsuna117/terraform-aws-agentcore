@@ -7,11 +7,11 @@ variable "aws_region" {
 variable "name" {
   description = "Base name for the AgentCore Gateway resources created by this example."
   type        = string
-  default     = "runtime-mcp-gateway"
+  default     = "runtime-agent-gateway"
 }
 
 variable "agent_runtime_arn" {
-  description = "ARN of the AgentCore Runtime that hosts an MCP server."
+  description = "ARN of the AgentCore Runtime agent to route through the gateway."
   type        = string
 }
 
