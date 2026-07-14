@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.6.0...v0.7.0) (2026-07-14)
+
 ## [0.6.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.5.1...v0.6.0) (2026-07-12)
 
 ## [0.5.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.5.0...v0.5.1) (2026-05-29)
