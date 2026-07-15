@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.7.0...v0.8.0) (2026-07-15)
+
+### 🚀 Features
+
+* **runtime:** add IAM extensions and MMDSv2 enforcement ([8385f14](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/8385f140c3daaed91c250ee5771c52ce1b93c877))
+
+### 🐛 Bug Fixes
+
+* **release:** pin and verify changelog generation ([c41013a](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/c41013ad9cd6729def82baa0841363482f405f7c))
+
 ## [0.7.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.6.0...v0.7.0) (2026-07-14)
 
 ## [0.6.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.5.1...v0.6.0) (2026-07-12)
