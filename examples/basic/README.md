@@ -4,6 +4,8 @@ This example provisions a minimal Amazon Bedrock AgentCore runtime using the
 [terraform-aws-agentcore](https://github.com/LuisOsuna117/terraform-aws-agentcore)
 module.
 
+The machine running `apply` needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
+
 ## What it creates
 
 - An AgentCore runtime (`PUBLIC` network mode)

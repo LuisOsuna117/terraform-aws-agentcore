@@ -98,6 +98,16 @@ variable "environment_variables" {
   default     = {}
 }
 
+variable "runtime_metadata_configuration" {
+  description = "AgentCore Runtime microVM metadata configuration. require_mmdsv2 maps to metadataConfiguration.requireMMDSV2. Until the AWS provider exposes this field, the runtime submodule applies it with UpdateAgentRuntime through the AWS CLI. Set to null only to disable the compatibility update."
+  type = object({
+    require_mmdsv2 = bool
+  })
+  default = {
+    require_mmdsv2 = true
+  }
+}
+
 # ==============================================================================
 # Runtime — Authorizer
 # ==============================================================================
@@ -241,8 +251,25 @@ variable "additional_iam_statements" {
   default     = []
 }
 
+variable "additional_iam_policy_arns" {
+  description = "Additional managed IAM policy ARNs to attach to the module-created execution role. Ignored when create_execution_role = false."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.additional_iam_policy_arns : can(regex("^arn:[^:]+:iam::(aws|[0-9]{12}):policy/.+$", arn))])
+    error_message = "Each entry in additional_iam_policy_arns must be a valid managed IAM policy ARN."
+  }
+}
+
 variable "allow_bedrock_invoke_all" {
   description = "When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource \"*\". Set to false to remove this broad statement and supply model-specific permissions via additional_iam_statements (recommended for production)."
+  type        = bool
+  default     = true
+}
+
+variable "allow_workload_access_token_for_user_id" {
+  description = "When true (default), allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny so broad managed policies such as BedrockAgentCoreFullAccess cannot re-enable it."
   type        = bool
   default     = true
 }

@@ -2,10 +2,12 @@
 
 Creates the full CodeBuild build pipeline (ECR + S3 + CodeBuild project) but does **not** start a build automatically on `terraform apply`.
 
+The machine running `apply` still needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
+
 ## Use this when
 
 - You manage builds from a separate CI/CD pipeline (GitHub Actions, GitLab CI, etc.).
-- The Terraform executor (e.g. Terraform Cloud) doesn't have AWS CLI or Docker access.
+- The Terraform executor (e.g. Terraform Cloud) has the AWS CLI needed for the MMDSv2 update but does not need Docker or a bash build script.
 - You want to decouple infra changes from image rebuilds.
 
 ## What this example creates

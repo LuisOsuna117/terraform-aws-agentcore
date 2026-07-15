@@ -31,6 +31,11 @@ locals {
     var.tags,
   )
 
+  workload_identity_resource_arns = [
+    "arn:aws:bedrock-agentcore:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default",
+    "arn:aws:bedrock-agentcore:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default/workload-identity/*",
+  ]
+
   # The container image URI used by the runtime.
   # create_build_pipeline = true  → ECR repo URL + image_tag from module.build
   # create_build_pipeline = false → caller-supplied image_uri (BYO)
@@ -232,13 +237,14 @@ module "runtime" {
   # Protocol and headers (optional)
   server_protocol          = var.server_protocol
   request_header_allowlist = var.request_header_allowlist
+  metadata_configuration   = var.runtime_metadata_configuration
 
   # AWS_REGION and AWS_DEFAULT_REGION are injected automatically.
   # Callers can append additional variables via var.environment_variables.
   environment_variables = merge(
     {
-      AWS_REGION         = data.aws_region.current.id
-      AWS_DEFAULT_REGION = data.aws_region.current.id
+      AWS_REGION         = data.aws_region.current.region
+      AWS_DEFAULT_REGION = data.aws_region.current.region
     },
     var.create_code_interpreter ? {
       # Module-defined convention: agent code can read this value to start and
@@ -254,6 +260,7 @@ module "runtime" {
     aws_iam_role_policy.agent_execution,
     aws_iam_role_policy.code_interpreter_invoke,
     aws_iam_role_policy_attachment.agent_execution_managed,
+    aws_iam_role_policy_attachment.agent_execution_additional,
   ]
 }
 
@@ -278,6 +285,7 @@ module "code_interpreter" {
     terraform_data.validations,
     aws_iam_role_policy.agent_execution,
     aws_iam_role_policy_attachment.agent_execution_managed,
+    aws_iam_role_policy_attachment.agent_execution_additional,
   ]
 }
 
@@ -355,7 +363,7 @@ resource "aws_iam_role" "agent_execution" {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         }
         ArnLike = {
-          "aws:SourceArn" = "arn:aws:bedrock-agentcore:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:*"
+          "aws:SourceArn" = "arn:aws:bedrock-agentcore:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"
         }
       }
     }]
@@ -374,6 +382,15 @@ resource "aws_iam_role_policy_attachment" "agent_execution_managed" {
 
   role       = aws_iam_role.agent_execution[0].name
   policy_arn = "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
+}
+
+# Caller-supplied managed policies — useful when an existing managed policy is
+# already the source of truth for the runtime's permissions.
+resource "aws_iam_role_policy_attachment" "agent_execution_additional" {
+  for_each = var.create_execution_role ? var.additional_iam_policy_arns : toset([])
+
+  role       = aws_iam_role.agent_execution[0].name
+  policy_arn = each.value
 }
 
 # Inline policy — least-privilege baseline plus any caller-supplied statements.
@@ -415,7 +432,7 @@ resource "aws_iam_role_policy" "agent_execution" {
           Sid      = "CloudWatchLogsDescribeGroups"
           Effect   = "Allow"
           Action   = ["logs:DescribeLogGroups"]
-          Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
         },
         # CreateLogGroup/DescribeLogStreams are scoped to the agentcore log group.
         {
@@ -425,7 +442,7 @@ resource "aws_iam_role_policy" "agent_execution" {
             "logs:CreateLogGroup",
             "logs:DescribeLogStreams",
           ]
-          Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*"
+          Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*"
         },
         # CreateLogStream/PutLogEvents must target the log-stream ARN (requires :log-stream:* suffix).
         {
@@ -435,7 +452,7 @@ resource "aws_iam_role_policy" "agent_execution" {
             "logs:CreateLogStream",
             "logs:PutLogEvents",
           ]
-          Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+          Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
         },
         # X-Ray — distributed tracing
         {
@@ -480,15 +497,22 @@ resource "aws_iam_role_policy" "agent_execution" {
         {
           Sid    = "WorkloadAccessTokens"
           Effect = "Allow"
-          Action = [
-            "bedrock-agentcore:GetWorkloadAccessToken",
-            "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
-            "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
-          ]
-          Resource = [
-            "arn:aws:bedrock-agentcore:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default",
-            "arn:aws:bedrock-agentcore:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default/workload-identity/*",
-          ]
+          Action = concat(
+            [
+              "bedrock-agentcore:GetWorkloadAccessToken",
+              "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+            ],
+            var.allow_workload_access_token_for_user_id ? ["bedrock-agentcore:GetWorkloadAccessTokenForUserId"] : [],
+          )
+          Resource = local.workload_identity_resource_arns
+        },
+      ],
+      var.allow_workload_access_token_for_user_id ? [] : [
+        {
+          Sid      = "DenyWorkloadAccessTokenForUserId"
+          Effect   = "Deny"
+          Action   = ["bedrock-agentcore:GetWorkloadAccessTokenForUserId"]
+          Resource = local.workload_identity_resource_arns
         },
       ],
       # Caller-supplied statements merged last so they can override defaults.

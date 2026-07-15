@@ -2,6 +2,8 @@
 
 Deploys an AgentCore runtime using a container image **you supply**. No CodeBuild project, S3 bucket, or ECR repository is created.
 
+The machine running `apply` needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
+
 ## Use this when
 
 - You already have a CI/CD pipeline (GitHub Actions, GitLab CI, etc.) that builds and pushes your agent image.

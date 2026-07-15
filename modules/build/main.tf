@@ -174,7 +174,7 @@ resource "aws_iam_role_policy" "image_build" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/*"
+        Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/*"
       },
       # ECR — push built image
       {
@@ -243,7 +243,7 @@ resource "aws_codebuild_project" "agent_image" {
 
     environment_variable {
       name  = "AWS_DEFAULT_REGION"
-      value = data.aws_region.current.id
+      value = data.aws_region.current.region
     }
 
     environment_variable {
@@ -300,7 +300,7 @@ resource "null_resource" "trigger_build" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/../../scripts/build-image.sh \"${aws_codebuild_project.agent_image.name}\" \"${data.aws_region.current.id}\" \"${aws_ecr_repository.this.name}\" \"${var.image_tag}\" \"${aws_ecr_repository.this.repository_url}\""
+    command = "${path.module}/../../scripts/build-image.sh \"${aws_codebuild_project.agent_image.name}\" \"${data.aws_region.current.region}\" \"${aws_ecr_repository.this.name}\" \"${var.image_tag}\" \"${aws_ecr_repository.this.repository_url}\""
   }
 
   depends_on = [

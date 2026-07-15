@@ -2,6 +2,8 @@
 
 This example provisions an AgentCore Runtime and AgentCore Gateway in one module call, then attaches the module-created runtime as an MCP Gateway Target.
 
+The machine running `apply` needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
+
 ```bash
 tofu init
 tofu apply -var="image_uri=123456789012.dkr.ecr.us-east-1.amazonaws.com/my-mcp-runtime:v1.0.0"
