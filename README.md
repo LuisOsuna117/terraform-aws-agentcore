@@ -24,6 +24,8 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 
 > **Windows or CI without bash?** Set `trigger_build_on_apply = false` and use the `codebuild_start_build_command` output to drive builds from your pipeline — or skip the build entirely with `create_build_pipeline = false` and a pre-built `image_uri`.
 
+> **MMDSv2 apply prerequisite:** since June 30, 2026, AgentCore rejects invocations of runtimes without MMDSv2. While `hashicorp/aws` does not expose AgentCore Runtime `metadataConfiguration`, the module enforces `requireMMDSV2 = true` with `UpdateAgentRuntime`. The machine running `apply` needs an AWS CLI v2 release that includes `bedrock-agentcore-control update-agent-runtime` and `--metadata-configuration` (AWS CLI v2.35+ recommended).
+
 ---
 
 ## ✅ Features
@@ -40,7 +42,8 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — set `create_gateway = true` and use `gateway_targets` with `target_type = "AGENT"` for direct AgentCore Runtime routing or `target_type = "MCP"` for MCP aggregation.
 - 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
-- 🔒 **Extensible IAM** — append policy statements to the execution role via `additional_iam_statements` without touching the module source.
+- 🔒 **Extensible IAM** — append inline statements with `additional_iam_statements` or attach existing managed policies with `additional_iam_policy_arns`.
+- 🛡️ **MMDSv2 enforcement** — requires microVM Metadata Service v2 by default through a temporary `UpdateAgentRuntime` compatibility bridge.
 - 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
 - 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
 - ✅ **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
@@ -76,7 +79,9 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_iam_role` (execution) | `create_execution_role = true` | Execution role assumed by AgentCore Runtime and, by default, Code Interpreter. |
 | `aws_iam_role_policy` (execution) | `create_execution_role = true` | Least-privilege inline policy: ECR pull, CloudWatch Logs, X-Ray, Metrics, Bedrock, workload tokens. |
 | `aws_iam_role_policy_attachment` | `create_execution_role && attach_bedrock_fullaccess_policy` | Optional `BedrockAgentCoreFullAccess` managed policy attachment. |
+| `aws_iam_role_policy_attachment` (additional) | `create_execution_role && length(additional_iam_policy_arns) > 0` | Attaches caller-supplied managed policies to the execution role. |
 | `aws_bedrockagentcore_agent_runtime` | `create_runtime = true` | The AgentCore runtime that executes your agent container. |
+| `local_sensitive_file` + `terraform_data` | `create_runtime && runtime_metadata_configuration != null` | Applies `metadataConfiguration.requireMMDSV2` with `UpdateAgentRuntime` until the AWS provider supports it natively. |
 | `aws_bedrockagentcore_code_interpreter` | `create_code_interpreter = true` | Isolated managed environment where the agent can execute code. |
 | `aws_iam_role_policy` (Code Interpreter invoke) | `create_runtime && create_code_interpreter && create_execution_role` | Grants the runtime role session access to the created Code Interpreter ARN. |
 | `aws_ecr_repository` + policies | `create_build_pipeline = true` | Private container registry for agent images. |
@@ -106,6 +111,7 @@ Resources marked with a condition are only created when the corresponding flag i
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.8 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.48 |
+| <a name="requirement_local"></a> [local](#requirement\_local) | >= 2.5 |
 
 ## Providers
 
@@ -131,6 +137,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.code_interpreter_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy_attachment.agent_execution_additional](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.agent_execution_managed](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [terraform_data.validations](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
@@ -140,9 +147,11 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_additional_iam_policy_arns"></a> [additional\_iam\_policy\_arns](#input\_additional\_iam\_policy\_arns) | Additional managed IAM policy ARNs to attach to the module-created execution role. Ignored when create\_execution\_role = false. | `set(string)` | `[]` | no |
 | <a name="input_additional_iam_statements"></a> [additional\_iam\_statements](#input\_additional\_iam\_statements) | Additional IAM policy statements to append to the inline policy on the execution role. Use this to grant access to Bedrock models, Secrets Manager, or other services your agent code requires. | `list(any)` | `[]` | no |
 | <a name="input_agent_source_dir"></a> [agent\_source\_dir](#input\_agent\_source\_dir) | Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume. | `string` | `null` | no |
 | <a name="input_allow_bedrock_invoke_all"></a> [allow\_bedrock\_invoke\_all](#input\_allow\_bedrock\_invoke\_all) | When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource "*". Set to false to remove this broad statement and supply model-specific permissions via additional\_iam\_statements (recommended for production). | `bool` | `true` | no |
+| <a name="input_allow_workload_access_token_for_user_id"></a> [allow\_workload\_access\_token\_for\_user\_id](#input\_allow\_workload\_access\_token\_for\_user\_id) | When true (default), allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny so broad managed policies such as BedrockAgentCoreFullAccess cannot re-enable it. | `bool` | `true` | no |
 | <a name="input_attach_bedrock_fullaccess_policy"></a> [attach\_bedrock\_fullaccess\_policy](#input\_attach\_bedrock\_fullaccess\_policy) | When true and create\_execution\_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional\_iam\_statements. | `bool` | `true` | no |
 | <a name="input_authorizer_allowed_audience"></a> [authorizer\_allowed\_audience](#input\_authorizer\_allowed\_audience) | Set of allowed JWT audience values. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
 | <a name="input_authorizer_allowed_clients"></a> [authorizer\_allowed\_clients](#input\_authorizer\_allowed\_clients) | Set of allowed client IDs for JWT token validation. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
@@ -199,6 +208,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_name"></a> [name](#input\_name) | Base name used as a prefix for all resources created by this module (e.g. "my-agent"). Must start with a letter, max 32 characters. | `string` | n/a | yes |
 | <a name="input_network_mode"></a> [network\_mode](#input\_network\_mode) | Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint publicly; VPC keeps traffic within your VPC via network\_mode\_config. | `string` | `"PUBLIC"` | no |
 | <a name="input_request_header_allowlist"></a> [request\_header\_allowlist](#input\_request\_header\_allowlist) | List of HTTP request headers to pass through to the runtime container. When empty, no additional headers are forwarded. | `list(string)` | `[]` | no |
+| <a name="input_runtime_metadata_configuration"></a> [runtime\_metadata\_configuration](#input\_runtime\_metadata\_configuration) | AgentCore Runtime microVM metadata configuration. require\_mmdsv2 maps to metadataConfiguration.requireMMDSV2. Until the AWS provider exposes this field, the runtime submodule applies it with UpdateAgentRuntime through the AWS CLI. Set to null only to disable the compatibility update. | <pre>object({<br/>    require_mmdsv2 = bool<br/>  })</pre> | <pre>{<br/>  "require_mmdsv2": true<br/>}</pre> | no |
 | <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API. | `string` | `null` | no |
 | <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
@@ -213,6 +223,7 @@ Resources marked with a condition are only created when the corresponding flag i
 |------|-------------|
 | <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. Null when create\_runtime = false. |
+| <a name="output_agent_runtime_metadata_configuration"></a> [agent\_runtime\_metadata\_configuration](#output\_agent\_runtime\_metadata\_configuration) | Requested microVM metadata configuration applied to the AgentCore runtime. Null when create\_runtime = false or the compatibility update is disabled. |
 | <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_network_mode"></a> [agent\_runtime\_network\_mode](#output\_agent\_runtime\_network\_mode) | Network mode of the runtime (PUBLIC or VPC). Null when create\_runtime = false. |
 | <a name="output_agent_runtime_version"></a> [agent\_runtime\_version](#output\_agent\_runtime\_version) | Version identifier of the deployed AgentCore runtime. Null when create\_runtime = false. |
@@ -536,6 +547,7 @@ module "agentcore" {
 
   # Drop the broad managed policy; grant only what the agent needs
   attach_bedrock_fullaccess_policy = false
+  allow_workload_access_token_for_user_id = false
   additional_iam_statements = [
     {
       Sid    = "ClaudeAccess"
@@ -563,6 +575,25 @@ module "agentcore" {
   }
 }
 ```
+
+### Attach existing managed IAM policies
+
+Use `additional_iam_policy_arns` instead of generating separate attachment resources around the module:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name = "inventory-agent"
+
+  additional_iam_policy_arns = [
+    "arn:aws:iam::aws:policy/ReadOnlyAccess",
+  ]
+}
+```
+
+`ReadOnlyAccess` is intentionally broad; prefer an account-managed least-privilege policy for production workloads.
 
 ### Bring your own IAM role
 
@@ -736,6 +767,8 @@ module "agentcore" {
 ## 🔒 Security notes
 
 - 🔒 **`BedrockAgentCoreFullAccess` is broad** — it is enabled by default for convenience. Set `attach_bedrock_fullaccess_policy = false` in production and grant only the actions your agent requires via `additional_iam_statements`.
+- 🔒 **Disable the unverified UserId token path when it is not needed** — set `allow_workload_access_token_for_user_id = false`. The module removes the baseline Allow and adds an explicit Deny so `BedrockAgentCoreFullAccess` cannot grant it back.
+- 🛡️ **MMDSv2 is required by default** — `runtime_metadata_configuration.require_mmdsv2` defaults to `true`. The temporary compatibility update uses the AWS credentials of the machine running `apply` and writes its request to a mode-`0600` sensitive file under `.terraform/`.
 - 🔒 **Prefer least privilege** — scope `bedrock:InvokeModel` to specific model ARNs and `ecr:BatchGetImage` to specific repository ARNs rather than using `"Resource": "*"`.
 - 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
 - ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
@@ -764,6 +797,24 @@ When `trigger_build_on_apply = true` (the default), the `modules/build` submodul
 - **bash** — the build script requires a bash-compatible shell (Linux, macOS, WSL on Windows).
 
 Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your CI/CD pipeline instead.
+
+### 🛡️ Runtime MMDSv2 metadata configuration
+
+Since June 30, 2026, AgentCore rejects invocations of runtimes whose `metadataConfiguration.requireMMDSV2` is missing, false, or null. This module enables it by default:
+
+```hcl
+runtime_metadata_configuration = {
+  require_mmdsv2 = true
+}
+```
+
+The AgentCore `UpdateAgentRuntime` API exposes this setting, but the current `hashicorp/aws` Agent Runtime resource does not. Until native provider support lands, the runtime submodule writes the complete update request to a sensitive JSON file under `.terraform/` and invokes:
+
+```text
+aws bedrock-agentcore-control update-agent-runtime --cli-input-json file://... --region ...
+```
+
+The executor therefore needs AWS CLI v2 with `bedrock-agentcore-control` and `--metadata-configuration` support (v2.35+ recommended), plus `bedrock-agentcore:UpdateAgentRuntime` permission. Set `runtime_metadata_configuration = null` only when another control already applies the setting; doing so disables the compatibility update. See [AWS AgentCore Runtime security best practices](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html), [MMDSv2 ValidationException troubleshooting](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html), and the [UpdateAgentRuntime API](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_UpdateAgentRuntime.html).
 
 ### 🌐 VPC mode
 
@@ -812,7 +863,9 @@ AgentCore supports ARM64 architecture only. The default CodeBuild image (`amazon
 
 ### 🔒 IAM and `BedrockAgentCoreFullAccess`
 
-The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements`.
+The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements` and/or `additional_iam_policy_arns`.
+
+Set `allow_workload_access_token_for_user_id = false` for JWT-only workloads. Because the default managed policy grants `bedrock-agentcore:*`, this option adds an explicit Deny for `GetWorkloadAccessTokenForUserId` in addition to removing the action from the baseline Allow.
 
 The module-created execution role receives:
 
@@ -832,7 +885,7 @@ The default `code_interpreter_network_mode = "SANDBOX"` provides limited AWS ser
 
 ### 📦 Provider version
 
-The AgentCore resource types were introduced in hashicorp/aws **v6.x**. This module requires **v6.48 or newer**, where `aws_bedrockagentcore_gateway.protocol_type` became optional and direct AgentCore Runtime HTTP targets became available. Gateway targets remain encapsulated in `aws_cloudformation_stack` resources so MCP SigV4 credentials and direct `AGENT` target configuration use the complete AWS shape. The current Terraform AWS provider/CloudFormation schemas expose MCP and AgentCore Runtime HTTP targets; newer inference and generic HTTP passthrough target shapes require upstream IaC schema support before this module can manage them safely.
+The AgentCore resource types were introduced in hashicorp/aws **v6.x**. This module requires **v6.48 or newer**, where `aws_bedrockagentcore_gateway.protocol_type` became optional and direct AgentCore Runtime HTTP targets became available. Gateway targets remain encapsulated in `aws_cloudformation_stack` resources so MCP SigV4 credentials and direct `AGENT` target configuration use the complete AWS shape. As of hashicorp/aws v6.54, `aws_bedrockagentcore_agent_runtime` still does not expose `metadata_configuration`; the module uses the documented `UpdateAgentRuntime` compatibility bridge described above. Newer inference and generic HTTP passthrough target shapes likewise require upstream IaC schema support before this module can manage them safely.
 
 ### 🧩 Using submodules independently
 

@@ -129,7 +129,7 @@ locals {
     {
       for key, target in local.mcp_agent_runtime_targets : key => format(
         "https://bedrock-agentcore.%s.%s/runtimes/%s/invocations?qualifier=%s&accountId=%s",
-        data.aws_region.current.id,
+        data.aws_region.current.region,
         data.aws_partition.current.dns_suffix,
         urlencode(local.runtime_ids[key]),
         urlencode(coalesce(target.qualifier, "DEFAULT")),
@@ -365,7 +365,7 @@ resource "aws_cloudformation_stack" "gateway_target" {
                 CredentialProvider = {
                   IamCredentialProvider = {
                     Service = "bedrock-agentcore"
-                    Region  = data.aws_region.current.id
+                    Region  = data.aws_region.current.region
                   }
                 }
               },

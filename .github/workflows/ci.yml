@@ -155,3 +155,26 @@ jobs:
           git-push: "false"
           fail-on-diff: "true"
           args: --lockfile=false
+
+  # ----------------------------------------------------------------------------
+  # 6. Release notes smoke test
+  # ----------------------------------------------------------------------------
+  release-notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Install release notes dependencies
+        run: |
+          npm install --no-save \
+            "@semantic-release/release-notes-generator@14.1.1" \
+            conventional-changelog-conventionalcommits@9.3.1
+
+      - name: Verify release notes rendering
+        run: node scripts/verify-release-notes.mjs

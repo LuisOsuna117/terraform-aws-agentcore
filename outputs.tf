@@ -27,6 +27,11 @@ output "agent_runtime_network_mode" {
   value       = var.create_runtime ? var.network_mode : null
 }
 
+output "agent_runtime_metadata_configuration" {
+  description = "Requested microVM metadata configuration applied to the AgentCore runtime. Null when create_runtime = false or the compatibility update is disabled."
+  value       = var.create_runtime ? module.runtime[0].metadata_configuration : null
+}
+
 output "agent_runtime_workload_identity_arn" {
   description = "Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create_runtime = false."
   value       = var.create_runtime ? module.runtime[0].workload_identity_arn : null

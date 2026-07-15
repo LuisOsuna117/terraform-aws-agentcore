@@ -114,3 +114,13 @@ variable "environment_variables" {
   type        = map(string)
   default     = {}
 }
+
+variable "metadata_configuration" {
+  description = "Runtime microVM metadata configuration. require_mmdsv2 maps to metadataConfiguration.requireMMDSV2 and is applied through UpdateAgentRuntime until the AWS provider supports it natively. Set to null to skip the compatibility update."
+  type = object({
+    require_mmdsv2 = bool
+  })
+  default = {
+    require_mmdsv2 = true
+  }
+}
