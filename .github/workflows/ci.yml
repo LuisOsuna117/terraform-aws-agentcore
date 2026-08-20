@@ -13,6 +13,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  PODMAN_COMPOSE_PROVIDER: podman-compose
+
 jobs:
   compose:
     name: Podman / ${{ matrix.service }}
