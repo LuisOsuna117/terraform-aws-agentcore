@@ -167,13 +167,13 @@ variable "kms_key_arn" {
 }
 
 variable "exception_level" {
-  description = "Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR."
+  description = "Exception detail level exposed via the gateway. AgentCore currently accepts only DEBUG."
   type        = string
   default     = null
 
   validation {
-    condition     = var.exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.exception_level)
-    error_message = "exception_level must be one of INFO, WARN, or ERROR."
+    condition     = var.exception_level == null ? true : var.exception_level == "DEBUG"
+    error_message = "exception_level must be DEBUG or null."
   }
 }
 

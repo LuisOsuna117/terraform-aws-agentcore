@@ -48,12 +48,63 @@ run "static_gateway_rule" {
   variables {
     gateway_identifier = "gateway-abcdefghij"
     priority           = 100
-    paths              = ["/operator/*"]
+    conditions = [{
+      match_paths = {
+        any_of = ["/operator/*"]
+      }
+    }]
     static_target_name = "operator-runtime"
   }
 
   assert {
     condition     = aws_bedrockagentcore_gateway_rule.this.action[0].route_to_target[0].static_route[0].target_name == "operator-runtime"
     error_message = "Gateway Rule must preserve its static target route."
+  }
+}
+
+run "principal_only_gateway_rule" {
+  command = plan
+
+  module {
+    source = "./modules/gateway-rule"
+  }
+
+  variables {
+    gateway_identifier = "gateway-abcdefghij"
+    priority           = 200
+    conditions = [{
+      match_principals = {
+        any_of = [{
+          arn      = "arn:aws:iam::123456789012:role/NetworkOperator"
+          operator = "StringEquals"
+        }]
+      }
+    }]
+    static_target_name = "network-runtime"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway_rule.this.condition[0].match_principals[0].any_of[0].iam_principal[0].operator == "StringEquals"
+    error_message = "Gateway Rule must support principal-only conditions and preserve the IAM comparison operator."
+  }
+}
+
+run "unconditional_gateway_rule" {
+  command = plan
+
+  module {
+    source = "./modules/gateway-rule"
+  }
+
+  variables {
+    gateway_identifier = "gateway-abcdefghij"
+    priority           = 300
+    conditions         = []
+    static_target_name = "fallback-runtime"
+  }
+
+  assert {
+    condition     = length(aws_bedrockagentcore_gateway_rule.this.condition) == 0
+    error_message = "Gateway Rule must allow an unconditional fallback rule."
   }
 }

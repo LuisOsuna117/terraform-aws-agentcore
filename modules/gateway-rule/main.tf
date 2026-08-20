@@ -10,11 +10,6 @@ locals {
 resource "terraform_data" "validations" {
   lifecycle {
     precondition {
-      condition     = length(var.paths) > 0
-      error_message = "paths must contain at least one path."
-    }
-
-    precondition {
       condition     = length(local.configured_actions) == 1
       error_message = "Configure exactly one of static_target_name, weighted_targets, static_configuration_bundle, or weighted_configuration_bundles."
     }
@@ -25,20 +20,28 @@ resource "aws_bedrockagentcore_gateway_rule" "this" {
   gateway_identifier = var.gateway_identifier
   priority           = var.priority
   description        = var.description
+  region             = var.region
 
-  condition {
-    match_paths {
-      any_of = var.paths
-    }
+  dynamic "condition" {
+    for_each = var.conditions
+    content {
+      dynamic "match_paths" {
+        for_each = condition.value.match_paths == null ? [] : [condition.value.match_paths]
+        content {
+          any_of = match_paths.value.any_of
+        }
+      }
 
-    dynamic "match_principals" {
-      for_each = length(var.iam_principals) == 0 ? [] : [var.iam_principals]
-      content {
-        any_of {
-          dynamic "iam_principal" {
-            for_each = match_principals.value
-            content {
-              arn = iam_principal.value
+      dynamic "match_principals" {
+        for_each = condition.value.match_principals == null ? [] : [condition.value.match_principals]
+        content {
+          any_of {
+            dynamic "iam_principal" {
+              for_each = match_principals.value.any_of
+              content {
+                arn      = iam_principal.value.arn
+                operator = iam_principal.value.operator
+              }
             }
           }
         }
@@ -105,6 +108,15 @@ resource "aws_bedrockagentcore_gateway_rule" "this" {
           }
         }
       }
+    }
+  }
+
+  dynamic "timeouts" {
+    for_each = var.timeouts == null ? [] : [var.timeouts]
+    content {
+      create = timeouts.value.create
+      update = timeouts.value.update
+      delete = timeouts.value.delete
     }
   }
 

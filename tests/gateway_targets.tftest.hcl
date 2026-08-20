@@ -153,3 +153,21 @@ run "jwt_passthrough_does_not_grant_runtime_invoke_to_gateway_role" {
     error_message = "JWT passthrough targets must not grant Runtime invoke permission to the Gateway IAM role."
   }
 }
+
+run "gateway_accepts_debug_exception_level" {
+  command = plan
+
+  module {
+    source = "./modules/gateway"
+  }
+
+  variables {
+    name            = "debug-gateway"
+    exception_level = "DEBUG"
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway.this.exception_level == "DEBUG"
+    error_message = "Gateway must expose the only exception level accepted by AgentCore."
+  }
+}
