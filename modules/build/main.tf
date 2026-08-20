@@ -5,14 +5,6 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-locals {
-  # When the caller supplies no explicit pull principals, default to the current
-  # account root — identical to the previous hardcoded behaviour.
-  effective_ecr_pull_principals = length(var.ecr_pull_principals) > 0 ? var.ecr_pull_principals : [
-    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root",
-  ]
-}
-
 # ==============================================================================
 # ECR Repository — Agent Container Registry
 # ==============================================================================
@@ -34,6 +26,8 @@ resource "aws_ecr_repository" "this" {
 
 # Repository policy — allow the configured principals to pull images.
 resource "aws_ecr_repository_policy" "this" {
+  count = length(var.ecr_pull_principals) > 0 ? 1 : 0
+
   repository = aws_ecr_repository.this.name
 
   policy = jsonencode({
@@ -42,7 +36,7 @@ resource "aws_ecr_repository_policy" "this" {
       Sid    = "AllowPull"
       Effect = "Allow"
       Principal = {
-        AWS = local.effective_ecr_pull_principals
+        AWS = var.ecr_pull_principals
       }
       Action = [
         "ecr:BatchGetImage",
@@ -54,6 +48,8 @@ resource "aws_ecr_repository_policy" "this" {
 
 # Lifecycle policy — retain the N most-recent images; expire older ones.
 resource "aws_ecr_lifecycle_policy" "this" {
+  count = var.ecr_lifecycle_keep_count == null ? 0 : 1
+
   repository = aws_ecr_repository.this.name
 
   policy = jsonencode({
@@ -300,7 +296,15 @@ resource "null_resource" "trigger_build" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/../../scripts/build-image.sh \"${aws_codebuild_project.agent_image.name}\" \"${data.aws_region.current.region}\" \"${aws_ecr_repository.this.name}\" \"${var.image_tag}\" \"${aws_ecr_repository.this.repository_url}\""
+    command = "bash \"${path.module}/../../scripts/build-image.sh\""
+
+    environment = {
+      CODEBUILD_PROJECT_NAME = aws_codebuild_project.agent_image.name
+      BUILD_AWS_REGION       = data.aws_region.current.region
+      ECR_REPOSITORY_NAME    = aws_ecr_repository.this.name
+      ECR_IMAGE_TAG          = var.image_tag
+      ECR_REPOSITORY_URL     = aws_ecr_repository.this.repository_url
+    }
   }
 
   depends_on = [

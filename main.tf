@@ -13,7 +13,7 @@ locals {
   ecr_repository_name = coalesce(var.ecr_repository_name, var.name)
 
   # Agent source directory — allows callers to supply their own path.
-  agent_source_dir = coalesce(var.agent_source_dir, "${path.module}/agent-code")
+  agent_source_dir = coalesce(var.agent_source_dir, "${path.root}/agent-code")
 
   # Execution role ARN — from the module-created role or the caller-supplied one.
   execution_role_arn = var.create_execution_role ? aws_iam_role.agent_execution[0].arn : var.execution_role_arn
@@ -393,9 +393,8 @@ resource "aws_iam_role" "agent_execution" {
   })
 }
 
-# AWS-managed policy — provides broad AgentCore permissions out of the box.
-# Set attach_bedrock_fullaccess_policy = false to rely solely on the inline
-# policy (and any additional_iam_statements you provide) for a tighter posture.
+# Optional AWS-managed policy. Disabled by default because it is broader than
+# the execution role baseline assembled below.
 resource "aws_iam_role_policy_attachment" "agent_execution_managed" {
   count = var.create_execution_role && var.attach_bedrock_fullaccess_policy ? 1 : 0
 
@@ -497,9 +496,8 @@ resource "aws_iam_role_policy" "agent_execution" {
             }
           }
         },
-        # Bedrock model invocation — included by default.
-        # Set allow_bedrock_invoke_all = false and supply scoped statements via
-        # additional_iam_statements for a least-privilege production posture.
+        # Model invocation is opt-in. Prefer model-scoped statements through
+        # additional_iam_statements over the wildcard convenience switch.
       ],
       var.allow_bedrock_invoke_all ? [
         {

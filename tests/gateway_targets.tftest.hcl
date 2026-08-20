@@ -111,6 +111,8 @@ run "self_runtime_defaults_to_http_target" {
   variables {
     name                          = "self-agent-gateway"
     create_build_pipeline         = false
+    create_runtime                = true
+    create_execution_role         = true
     image_uri                     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/self-agent-gateway:test"
     create_gateway                = true
     gateway_attach_runtime_target = true

@@ -17,6 +17,7 @@ run "runtime_with_code_interpreter" {
   variables {
     name                    = "analytics-agent"
     create_build_pipeline   = false
+    create_execution_role   = true
     image_uri               = "123456789012.dkr.ecr.us-east-1.amazonaws.com/analytics-agent:test"
     create_code_interpreter = true
   }

@@ -23,6 +23,7 @@ run "managed_policy_and_user_id_deny" {
     name                  = "iam-security-agent"
     create_build_pipeline = false
     create_runtime        = false
+    create_execution_role = true
 
     additional_iam_policy_arns = [
       "arn:aws:iam::aws:policy/ReadOnlyAccess",

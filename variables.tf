@@ -63,15 +63,15 @@ variable "vpc_subnet_ids" {
 }
 
 variable "create_build_pipeline" {
-  description = "When true (default), creates the full CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. Set to false to use a pre-built image via image_uri (Bring Your Own Image)."
+  description = "When true, creates the CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "create_runtime" {
-  description = "When true (default), creates the AgentCore runtime resource. Set to false to provision only the build pipeline infrastructure without a runtime (useful for pre-baking images before the runtime is ready)."
+  description = "When true, creates the AgentCore Runtime resource."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "image_uri" {
@@ -118,15 +118,20 @@ variable "runtime_filesystems" {
 }
 
 variable "trigger_build_on_apply" {
-  description = "When true (default) and create_build_pipeline = true, a CodeBuild run is automatically started on every apply where source code, image_tag, or ECR configuration changes. Set to false to manage builds out-of-band (CI/CD pipeline, manual console run). Ignored when create_build_pipeline = false."
+  description = "When true and create_build_pipeline = true, starts CodeBuild when source or build configuration changes. Requires bash and AWS CLI v2 on the Terraform executor."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "image_tag" {
   description = "Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger_build_on_apply = true."
   type        = string
   default     = "latest"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$", var.image_tag))
+    error_message = "image_tag must be a valid OCI image tag of at most 128 characters."
+  }
 }
 
 variable "environment_variables" {
@@ -323,9 +328,9 @@ variable "code_interpreter_timeouts" {
 # ==============================================================================
 
 variable "create_execution_role" {
-  description = "When true, the module creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Set to false to provide an existing role via execution_role_arn."
+  description = "When true, creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Otherwise provide execution_role_arn for resources that require it."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "execution_role_arn" {
@@ -337,7 +342,7 @@ variable "execution_role_arn" {
 variable "attach_bedrock_fullaccess_policy" {
   description = "When true and create_execution_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional_iam_statements."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "additional_iam_statements" {
@@ -358,15 +363,15 @@ variable "additional_iam_policy_arns" {
 }
 
 variable "allow_bedrock_invoke_all" {
-  description = "When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource \"*\". Set to false to remove this broad statement and supply model-specific permissions via additional_iam_statements (recommended for production)."
+  description = "When true, adds bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource \"*\". Prefer model-specific permissions in additional_iam_statements."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "allow_workload_access_token_for_user_id" {
-  description = "When true (default), allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny so broad managed policies such as BedrockAgentCoreFullAccess cannot re-enable it."
+  description = "When true, allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny."
   type        = bool
-  default     = true
+  default     = false
 }
 
 # ==============================================================================
@@ -402,13 +407,13 @@ variable "ecr_scan_on_push" {
 }
 
 variable "ecr_lifecycle_keep_count" {
-  description = "Number of most-recent images to retain in the ECR repository. Older images are expired automatically."
+  description = "Number of most-recent images to retain. Null disables the ECR lifecycle policy."
   type        = number
-  default     = 10
+  default     = null
 
   validation {
-    condition     = var.ecr_lifecycle_keep_count >= 1
-    error_message = "ecr_lifecycle_keep_count must be at least 1."
+    condition     = var.ecr_lifecycle_keep_count == null || var.ecr_lifecycle_keep_count >= 1
+    error_message = "ecr_lifecycle_keep_count must be null or at least 1."
   }
 }
 
@@ -419,7 +424,7 @@ variable "ecr_force_delete" {
 }
 
 variable "ecr_pull_principals" {
-  description = "List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls."
+  description = "IAM principal ARNs allowed to pull images through an ECR repository policy. Empty creates no repository policy."
   type        = list(string)
   default     = []
 
@@ -434,9 +439,9 @@ variable "ecr_pull_principals" {
 # ==============================================================================
 
 variable "agent_source_dir" {
-  description = "Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume."
+  description = "Path to the agent application directory. Defaults to agent-code in the caller's root configuration."
   type        = string
-  default     = null # resolved in locals to "${path.module}/agent-code"
+  default     = null
 }
 
 variable "source_bucket_force_destroy" {
