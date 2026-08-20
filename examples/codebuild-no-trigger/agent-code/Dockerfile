@@ -13,7 +13,11 @@ RUN uv pip install -r requirements.txt
 RUN useradd -m -u 1000 bedrock_agentcore
 USER bedrock_agentcore
 
-EXPOSE 9000 8000 8080
+EXPOSE 8080
 COPY . .
+
+# AgentCore Runtime HTTP contract: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ping', timeout=3)"
 
 CMD ["opentelemetry-instrument", "python", "-m", "agent"]

@@ -214,6 +214,34 @@ replacement of a Runtime, Gateway, Memory, Identity resource, source bucket, or
 ECR repository outside the list above is a stop condition. Do not apply until
 the cause is understood and the plan matches the intended migration.
 
+## Pre-release AWS smoke checklist
+
+Run this checklist in a disposable non-production AWS account before tagging
+v1.0.0. Save the plan, apply output, invocation response, and destroy output for
+each scenario. Do not use production state or credentials.
+
+- [ ] Apply a Runtime and HTTP Gateway Target with a module-created Gateway IAM
+  role. Invoke the Runtime through the Gateway and confirm the response and
+  Runtime logs.
+- [ ] Apply an MCP Gateway Target and invoke one allowed tool through the
+  Gateway. Confirm that target discovery, credential handling, and the returned
+  payload match the configured target.
+- [ ] Apply a Gateway with `create_role = false` and a caller-owned IAM role.
+  Confirm that the module neither changes nor attaches policies to that role.
+- [ ] Apply the `codebuild-no-trigger` example with `create_runtime = false`,
+  start the build explicitly, confirm that the image is present in ECR, then
+  enable and invoke the Runtime.
+- [ ] Deploy v0.8 and v1.0 at separate module addresses, move a test caller to
+  the v1 Gateway, then move it back to v0.8 without changing either state.
+- [ ] Destroy and recreate every scenario. Confirm that no unexpected
+  CloudFormation compatibility stack, orphaned Gateway Target, IAM attachment,
+  source bucket, or ECR policy remains.
+
+Stop the release if an invocation fails, a plan replaces a shared Runtime,
+Gateway, Memory, Identity resource, source bucket, or ECR repository, a
+caller-owned IAM role changes, or cleanup leaves resources that require manual
+state edits.
+
 ## Requirements
 
 - AWS Provider `>= 6.61, < 7.0`
