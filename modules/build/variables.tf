@@ -35,9 +35,14 @@ variable "ecr_scan_on_push" {
 }
 
 variable "ecr_lifecycle_keep_count" {
-  description = "Number of most-recent images to retain."
+  description = "Number of most-recent images to retain. Null creates no lifecycle policy."
   type        = number
-  default     = 10
+  default     = null
+
+  validation {
+    condition     = var.ecr_lifecycle_keep_count == null ? true : var.ecr_lifecycle_keep_count >= 1
+    error_message = "ecr_lifecycle_keep_count must be null or at least 1."
+  }
 }
 
 variable "ecr_force_delete" {
@@ -47,7 +52,7 @@ variable "ecr_force_delete" {
 }
 
 variable "ecr_pull_principals" {
-  description = "List of IAM principal ARNs allowed to pull images from the ECR repository. When empty (default), only the current account root is allowed, preserving the previous behaviour. Extend this list to enable cross-account or cross-org pulls."
+  description = "IAM principal ARNs allowed to pull images through a repository policy. Empty creates no repository policy."
   type        = list(string)
   default     = []
 
@@ -80,6 +85,11 @@ variable "image_tag" {
   description = "Docker image tag to build and push."
   type        = string
   default     = "latest"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$", var.image_tag))
+    error_message = "image_tag must be a valid OCI image tag of at most 128 characters."
+  }
 }
 
 variable "codebuild_compute_type" {
@@ -109,5 +119,5 @@ variable "codebuild_build_timeout" {
 variable "trigger_build_on_apply" {
   description = "When true, automatically starts a CodeBuild run on every terraform apply where source or configuration changes."
   type        = bool
-  default     = true
+  default     = false
 }

@@ -27,11 +27,6 @@ output "agent_runtime_network_mode" {
   value       = var.create_runtime ? var.network_mode : null
 }
 
-output "agent_runtime_metadata_configuration" {
-  description = "Requested microVM metadata configuration applied to the AgentCore runtime. Null when create_runtime = false or the compatibility update is disabled."
-  value       = var.create_runtime ? module.runtime[0].metadata_configuration : null
-}
-
 output "agent_runtime_workload_identity_arn" {
   description = "Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create_runtime = false."
   value       = var.create_runtime ? module.runtime[0].workload_identity_arn : null
@@ -75,12 +70,6 @@ output "effective_image_uri" {
   value       = local.effective_image_uri
 }
 
-# Backwards-compatible alias kept for existing callers.
-output "container_image_uri" {
-  description = "Alias for effective_image_uri. Kept for backwards compatibility."
-  value       = local.effective_image_uri
-}
-
 # ==============================================================================
 # IAM
 # ==============================================================================
@@ -91,8 +80,8 @@ output "execution_role_arn" {
 }
 
 output "execution_role_name" {
-  description = "Name of the module-created execution role. Empty string when create_execution_role = false."
-  value       = var.create_execution_role ? aws_iam_role.agent_execution[0].name : ""
+  description = "Name of the module-created execution role. Null when create_execution_role is false."
+  value       = var.create_execution_role ? aws_iam_role.agent_execution[0].name : null
 }
 
 output "codebuild_role_arn" {
@@ -205,14 +194,9 @@ output "gateway_target_ids" {
   value       = var.create_gateway ? module.gateway[0].gateway_target_ids : {}
 }
 
-output "gateway_target_endpoints" {
-  description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create_gateway = false."
-  value       = var.create_gateway ? module.gateway[0].gateway_target_endpoints : {}
-}
-
-output "gateway_agent_target_invocation_urls" {
-  description = "Map of AGENT target keys to their path-routed Gateway invocation URLs. Empty when create_gateway = false."
-  value       = var.create_gateway ? module.gateway[0].gateway_agent_target_invocation_urls : {}
+output "gateway_target_invocation_urls" {
+  description = "Map of direct HTTP target keys to their path-routed Gateway invocation URLs. Empty when create_gateway is false."
+  value       = var.create_gateway ? module.gateway[0].gateway_target_invocation_urls : {}
 }
 
 output "gateway_runtime_target_id" {

@@ -13,7 +13,7 @@ locals {
   ecr_repository_name = coalesce(var.ecr_repository_name, var.name)
 
   # Agent source directory — allows callers to supply their own path.
-  agent_source_dir = coalesce(var.agent_source_dir, "${path.module}/agent-code")
+  agent_source_dir = coalesce(var.agent_source_dir, "${path.root}/agent-code")
 
   # Execution role ARN — from the module-created role or the caller-supplied one.
   execution_role_arn = var.create_execution_role ? aws_iam_role.agent_execution[0].arn : var.execution_role_arn
@@ -45,31 +45,52 @@ locals {
   # the gateway created by this same call. The stable map key is "runtime".
   gateway_runtime_target_key  = "runtime"
   gateway_runtime_target_name = coalesce(var.gateway_runtime_target.name, local.gateway_runtime_target_key)
-  gateway_has_mcp_targets = length(var.gateway_mcp_targets) > 0 || anytrue([
-    for target in values(var.gateway_targets) : upper(target.target_type) == "MCP"
-  ])
-  gateway_has_agent_targets = anytrue([
-    for target in values(var.gateway_targets) : upper(target.target_type) == "AGENT"
-  ])
-  gateway_runtime_target_type = coalesce(
-    try(upper(var.gateway_runtime_target.target_type), null),
-    var.gateway_protocol_type == "MCP" || local.gateway_has_mcp_targets ? "MCP" : (
-      local.gateway_has_agent_targets ? "AGENT" : (var.server_protocol == "MCP" ? "MCP" : "AGENT")
-    ),
+  gateway_runtime_uses_mcp    = var.server_protocol == "MCP"
+  gateway_runtime_arn         = try(module.runtime[0].agent_runtime_arn, null)
+  gateway_runtime_arn_parts   = local.gateway_runtime_arn == null ? [] : split(":", local.gateway_runtime_arn)
+  gateway_runtime_resource_parts = length(local.gateway_runtime_arn_parts) <= 5 ? [] : split(
+    "/",
+    join(":", slice(local.gateway_runtime_arn_parts, 5, length(local.gateway_runtime_arn_parts))),
+  )
+  gateway_runtime_id = length(local.gateway_runtime_resource_parts) > 1 ? element(
+    split(":", element(local.gateway_runtime_resource_parts, 1)),
+    0,
+  ) : null
+  gateway_runtime_endpoint = local.gateway_runtime_id == null ? null : format(
+    "https://bedrock-agentcore.%s.%s/runtimes/%s/invocations?qualifier=%s&accountId=%s",
+    data.aws_region.current.region,
+    data.aws_partition.current.dns_suffix,
+    urlencode(local.gateway_runtime_id),
+    urlencode(coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")),
+    element(local.gateway_runtime_arn_parts, 4),
   )
 
   gateway_runtime_target = var.gateway_attach_runtime_target && var.create_runtime ? {
     (local.gateway_runtime_target_key) = {
-      target_type              = local.gateway_runtime_target_type
-      name                     = local.gateway_runtime_target_name
-      description              = var.gateway_runtime_target.description
-      endpoint                 = null
-      agent_runtime_arn        = module.runtime[0].agent_runtime_arn
-      qualifier                = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
-      schema                   = var.gateway_runtime_target.schema
-      allowed_query_parameters = var.gateway_runtime_target.allowed_query_parameters
-      allowed_request_headers  = var.gateway_runtime_target.allowed_request_headers
-      allowed_response_headers = var.gateway_runtime_target.allowed_response_headers
+      name        = local.gateway_runtime_target_name
+      description = var.gateway_runtime_target.description
+      region      = var.gateway_runtime_target.region
+      target_configuration = merge(
+        local.gateway_runtime_uses_mcp ? {
+          mcp = {
+            mcp_server = {
+              endpoint = local.gateway_runtime_endpoint
+            }
+          }
+        } : {},
+        local.gateway_runtime_uses_mcp ? {} : {
+          http = {
+            agentcore_runtime = {
+              arn       = local.gateway_runtime_arn
+              qualifier = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
+            }
+          }
+        },
+      )
+      credential_provider_configuration = var.gateway_runtime_target.credential_provider_configuration
+      metadata_configuration            = var.gateway_runtime_target.metadata_configuration
+      private_endpoint                  = var.gateway_runtime_target.private_endpoint
+      timeouts                          = var.gateway_runtime_target.timeouts
     }
   } : {}
 
@@ -78,22 +99,12 @@ locals {
     local.gateway_runtime_target,
   )
 
-  gateway_agent_runtime_target_keys = setunion(
-    toset([
-      for key, target in var.gateway_mcp_targets : key
-      if try(trimspace(target.endpoint), "") == ""
-    ]),
-    toset([
-      for key, target in var.gateway_targets : key
-      if upper(target.target_type) == "MCP" && try(trimspace(target.endpoint), "") == ""
-    ]),
-    var.gateway_attach_runtime_target && var.create_runtime && local.gateway_runtime_target_type == "MCP" ? toset([local.gateway_runtime_target_key]) : toset([]),
+  effective_gateway_runtime_invoke_arns = concat(
+    var.gateway_runtime_invoke_arns,
+    var.gateway_attach_runtime_target && var.create_runtime ? [local.gateway_runtime_arn] : [],
   )
 
-  gateway_target_names = concat(
-    [for key, target in var.gateway_mcp_targets : coalesce(target.name, key)],
-    [for key, target in var.gateway_targets : coalesce(target.name, key)],
-  )
+  gateway_target_names = [for key, target in var.gateway_targets : coalesce(try(target.name, null), key)]
 }
 
 # ==============================================================================
@@ -104,13 +115,16 @@ locals {
 resource "terraform_data" "validations" {
   lifecycle {
     precondition {
-      condition     = !(!var.create_build_pipeline && var.create_runtime && (var.image_uri == null || trimspace(var.image_uri) == ""))
-      error_message = "image_uri must be set and non-empty when create_runtime = true and create_build_pipeline = false."
+      condition = var.create_build_pipeline || !var.create_runtime || length(compact([
+        var.image_uri == null ? "" : "image_uri",
+        var.runtime_code_configuration == null ? "" : "runtime_code_configuration",
+      ])) == 1
+      error_message = "When create_runtime is true and create_build_pipeline is false, configure exactly one of image_uri or runtime_code_configuration."
     }
 
     precondition {
-      condition     = !(var.create_build_pipeline && var.image_uri != null)
-      error_message = "image_uri must be null when create_build_pipeline = true. Use image_tag to control the built image tag."
+      condition     = !var.create_build_pipeline || (var.image_uri == null && var.runtime_code_configuration == null)
+      error_message = "image_uri and runtime_code_configuration must be null when create_build_pipeline is true."
     }
 
     precondition {
@@ -134,8 +148,8 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = var.create_gateway || (length(var.gateway_targets) == 0 && length(var.gateway_mcp_targets) == 0)
-      error_message = "gateway_targets and gateway_mcp_targets require create_gateway = true."
+      condition     = var.create_gateway || length(var.gateway_targets) == 0
+      error_message = "gateway_targets requires create_gateway = true."
     }
 
     precondition {
@@ -149,8 +163,8 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = !var.gateway_attach_runtime_target || (!contains(keys(var.gateway_targets), local.gateway_runtime_target_key) && !contains(keys(var.gateway_mcp_targets), local.gateway_runtime_target_key))
-      error_message = "gateway_targets and gateway_mcp_targets cannot use key \"runtime\" when gateway_attach_runtime_target = true; that key is reserved for the module-created runtime target."
+      condition     = !var.gateway_attach_runtime_target || !contains(keys(var.gateway_targets), local.gateway_runtime_target_key)
+      error_message = "gateway_targets cannot use key \"runtime\" when gateway_attach_runtime_target = true; that key is reserved for the module-created runtime target."
     }
 
     precondition {
@@ -158,23 +172,13 @@ resource "terraform_data" "validations" {
       error_message = "gateway_runtime_target.name must not collide with any resolved gateway target name."
     }
 
-    precondition {
-      condition     = length(setintersection(toset(keys(var.gateway_targets)), toset(keys(var.gateway_mcp_targets)))) == 0
-      error_message = "gateway_targets and gateway_mcp_targets must not use the same map key."
-    }
-
-    precondition {
-      condition     = var.gateway_runtime_target.schema == null || local.gateway_runtime_target_type == "AGENT"
-      error_message = "gateway_runtime_target.schema is only supported when the effective target type is AGENT."
-    }
   }
 }
 
 # ==============================================================================
-# Build Submodule (codebuild mode only)
+# Build submodule
 #
-# Provisions ECR, S3, CodeBuild, IAM for the build pipeline, and optionally
-# triggers a build on apply. Not created when build_mode = "byo".
+# Provisions ECR, S3, CodeBuild, and build IAM only when explicitly enabled.
 # ==============================================================================
 
 module "build" {
@@ -219,16 +223,15 @@ module "runtime" {
   description        = var.description
   execution_role_arn = local.execution_role_arn
   image_uri          = local.effective_image_uri
+  code_configuration = var.runtime_code_configuration
+  filesystems        = var.runtime_filesystems
   network_mode       = var.network_mode
 
   # VPC networking (only used when network_mode = "VPC")
   vpc_security_group_ids = var.vpc_security_group_ids
   vpc_subnet_ids         = var.vpc_subnet_ids
 
-  # JWT authorizer (optional)
-  authorizer_discovery_url    = var.authorizer_discovery_url
-  authorizer_allowed_audience = var.authorizer_allowed_audience
-  authorizer_allowed_clients  = var.authorizer_allowed_clients
+  authorizer_configuration = var.runtime_authorizer_configuration
 
   # Lifecycle (optional)
   idle_runtime_session_timeout = var.idle_runtime_session_timeout
@@ -237,7 +240,8 @@ module "runtime" {
   # Protocol and headers (optional)
   server_protocol          = var.server_protocol
   request_header_allowlist = var.request_header_allowlist
-  metadata_configuration   = var.runtime_metadata_configuration
+  region                   = var.runtime_region
+  timeouts                 = var.runtime_timeouts
 
   # AWS_REGION and AWS_DEFAULT_REGION are injected automatically.
   # Callers can append additional variables via var.environment_variables.
@@ -253,6 +257,8 @@ module "runtime" {
     } : {},
     var.environment_variables,
   )
+
+  tags = local.common_tags
 
   depends_on = [
     terraform_data.validations,
@@ -279,6 +285,9 @@ module "code_interpreter" {
 
   vpc_security_group_ids = var.code_interpreter_vpc_security_group_ids
   vpc_subnet_ids         = var.code_interpreter_vpc_subnet_ids
+  certificate_secret_arn = var.code_interpreter_certificate_secret_arn
+  region                 = var.code_interpreter_region
+  timeouts               = var.code_interpreter_timeouts
   tags                   = local.common_tags
 
   depends_on = [
@@ -297,11 +306,15 @@ module "memory" {
   count  = var.create_memory ? 1 : 0
   source = "./modules/memory"
 
-  name                      = coalesce(var.memory_name, var.name)
+  name                      = replace(coalesce(var.memory_name, var.name), "-", "_")
   event_expiry_duration     = var.memory_event_expiry_duration
   description               = var.memory_description
   encryption_key_arn        = var.memory_encryption_key_arn
   memory_execution_role_arn = var.memory_execution_role_arn
+  indexed_keys              = var.memory_indexed_keys
+  kinesis_streams           = var.memory_kinesis_streams
+  region                    = var.memory_region
+  timeouts                  = var.memory_timeouts
   tags                      = local.common_tags
 }
 
@@ -313,21 +326,25 @@ module "gateway" {
   count  = var.create_gateway ? 1 : 0
   source = "./modules/gateway"
 
-  name                       = coalesce(var.gateway_name, var.name)
-  description                = var.gateway_description
-  create_role                = var.gateway_create_role
-  role_arn                   = var.gateway_role_arn
-  authorizer_type            = var.gateway_authorizer_type
-  authorizer_configuration   = var.gateway_authorizer_configuration
-  protocol_type              = var.gateway_protocol_type
-  protocol_configuration     = var.gateway_protocol_configuration
-  interceptor_configurations = var.gateway_interceptor_configurations
-  targets                    = local.effective_gateway_targets
-  mcp_targets                = var.gateway_mcp_targets
-  agent_runtime_target_keys  = local.gateway_agent_runtime_target_keys
-  kms_key_arn                = var.gateway_kms_key_arn
-  exception_level            = var.gateway_exception_level
-  tags                       = local.common_tags
+  name                        = coalesce(var.gateway_name, var.name)
+  description                 = var.gateway_description
+  create_role                 = var.gateway_create_role
+  role_arn                    = var.gateway_role_arn
+  role_policy_arns            = var.gateway_role_policy_arns
+  role_policy_statements      = var.gateway_role_policy_statements
+  authorizer_type             = var.gateway_authorizer_type
+  authorizer_configuration    = var.gateway_authorizer_configuration
+  protocol_type               = var.gateway_protocol_type
+  protocol_configuration      = var.gateway_protocol_configuration
+  policy_engine_configuration = var.gateway_policy_engine_configuration
+  interceptor_configurations  = var.gateway_interceptor_configurations
+  targets                     = local.effective_gateway_targets
+  runtime_invoke_arns         = local.effective_gateway_runtime_invoke_arns
+  kms_key_arn                 = var.gateway_kms_key_arn
+  exception_level             = var.gateway_exception_level
+  region                      = var.gateway_region
+  timeouts                    = var.gateway_timeouts
+  tags                        = local.common_tags
 }
 
 # ==============================================================================
@@ -335,6 +352,7 @@ module "gateway" {
 # ==============================================================================
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 data "aws_region" "current" {}
 
 # ==============================================================================
@@ -374,9 +392,8 @@ resource "aws_iam_role" "agent_execution" {
   })
 }
 
-# AWS-managed policy — provides broad AgentCore permissions out of the box.
-# Set attach_bedrock_fullaccess_policy = false to rely solely on the inline
-# policy (and any additional_iam_statements you provide) for a tighter posture.
+# Optional AWS-managed policy. Disabled by default because it is broader than
+# the execution role baseline assembled below.
 resource "aws_iam_role_policy_attachment" "agent_execution_managed" {
   count = var.create_execution_role && var.attach_bedrock_fullaccess_policy ? 1 : 0
 
@@ -478,9 +495,8 @@ resource "aws_iam_role_policy" "agent_execution" {
             }
           }
         },
-        # Bedrock model invocation — included by default.
-        # Set allow_bedrock_invoke_all = false and supply scoped statements via
-        # additional_iam_statements for a least-privilege production posture.
+        # Model invocation is opt-in. Prefer model-scoped statements through
+        # additional_iam_statements over the wildcard convenience switch.
       ],
       var.allow_bedrock_invoke_all ? [
         {

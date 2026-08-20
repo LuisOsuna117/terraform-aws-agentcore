@@ -16,17 +16,16 @@
 
 module "agentcore" {
   source = "../.."
-  # Uncomment once published to the registry:
-  # source  = "LuisOsuna117/agentcore/aws"
-  # version = "~> 1.0"
 
   # ---- Required ---------------------------------------------------------------
   name = var.name
 
-  # ---- Source code ------------------------------------------------------------
-  # Points to the agent-code/ directory bundled with this example.
-  # In your own project use: agent_source_dir = "${path.root}/src/my-agent"
-  agent_source_dir = "${path.module}/agent-code"
+  # Every feature is opt-in. The default source path resolves to the
+  # agent-code/ directory in this root configuration.
+  create_build_pipeline  = true
+  trigger_build_on_apply = true
+  create_runtime         = true
+  create_execution_role  = true
 
   # ---- Runtime ----------------------------------------------------------------
   description  = "Basic AgentCore runtime example."
@@ -40,24 +39,9 @@ module "agentcore" {
   }
 
   # ---- IAM --------------------------------------------------------------------
-  # The module creates an execution role by default with a lean inline policy.
-  # BedrockAgentCoreFullAccess is attached for convenience in this example.
-  # For production, set attach_bedrock_fullaccess_policy = false and use
-  # additional_iam_statements to grant only what your agent needs.
-  attach_bedrock_fullaccess_policy = true
-
-  # Example: grant access to a specific Claude model only.
-  # additional_iam_statements = [
-  #   {
-  #     Sid    = "ClaudeAccess"
-  #     Effect = "Allow"
-  #     Action = [
-  #       "bedrock:InvokeModel",
-  #       "bedrock:InvokeModelWithResponseStream",
-  #     ]
-  #     Resource = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
-  #   },
-  # ]
+  # The execution role starts with the service baseline only. Add
+  # model-specific statements required by your agent; broad managed policies
+  # and wildcard model invocation remain disabled.
 
   # ---- ECR --------------------------------------------------------------------
   ecr_scan_on_push         = true

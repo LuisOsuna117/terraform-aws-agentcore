@@ -1,8 +1,8 @@
 # ==============================================================================
-# Example: General Gateway with AgentCore Runtime Agent Target
+# Example: General Gateway with an HTTP Runtime Target
 #
 # Provisions a standalone general AgentCore Gateway (no MCP aggregation protocol)
-# and attaches one AGENT target backed by an AgentCore Runtime. Requests are
+# and attaches one direct HTTP target backed by an AgentCore Runtime. Requests are
 # routed directly to /runtime/invocations without MCP protocol translation.
 #
 # Run:
@@ -14,7 +14,7 @@ module "agentcore" {
   source = "../.."
   # Uncomment once published to the registry:
   # source  = "LuisOsuna117/agentcore/aws"
-  # version = "~> 0.4"
+  # version = "~> 1.0"
 
   name = var.name
 
@@ -27,15 +27,25 @@ module "agentcore" {
 
   gateway_targets = {
     runtime = {
-      target_type       = "AGENT"
-      description       = "AgentCore Runtime agent routed directly over HTTP."
-      agent_runtime_arn = var.agent_runtime_arn
-      qualifier         = var.qualifier
+      description = "AgentCore Runtime routed directly over HTTP."
+      target_configuration = {
+        http = {
+          agentcore_runtime = {
+            arn       = var.agent_runtime_arn
+            qualifier = var.qualifier
+          }
+        }
+      }
+      credential_provider_configuration = {
+        gateway_iam_role = {
+          service = "bedrock-agentcore"
+        }
+      }
     }
   }
 
   tags = {
     Environment = "example"
-    Workflow    = "gateway-agent-runtime-target"
+    Workflow    = "gateway-runtime-target"
   }
 }

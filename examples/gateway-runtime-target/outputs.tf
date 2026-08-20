@@ -13,7 +13,7 @@ output "gateway_protocol_type" {
   value       = module.agentcore.gateway_protocol_type
 }
 
-output "gateway_agent_target_invocation_urls" {
-  description = "Map of AGENT target keys to Gateway invocation URLs."
-  value       = module.agentcore.gateway_agent_target_invocation_urls
+output "gateway_target_invocation_urls" {
+  description = "Map of direct HTTP target keys to Gateway invocation URLs."
+  value       = module.agentcore.gateway_target_invocation_urls
 }

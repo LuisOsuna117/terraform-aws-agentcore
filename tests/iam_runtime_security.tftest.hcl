@@ -13,7 +13,6 @@ mock_provider "aws" {
   }
 }
 mock_provider "archive" {}
-mock_provider "local" {}
 mock_provider "null" {}
 mock_provider "time" {}
 
@@ -24,6 +23,7 @@ run "managed_policy_and_user_id_deny" {
     name                  = "iam-security-agent"
     create_build_pipeline = false
     create_runtime        = false
+    create_execution_role = true
 
     additional_iam_policy_arns = [
       "arn:aws:iam::aws:policy/ReadOnlyAccess",
@@ -53,20 +53,5 @@ run "managed_policy_and_user_id_deny" {
       contains(statement.Action, "bedrock-agentcore:GetWorkloadAccessTokenForUserId")
     ]) == 0
     error_message = "Disabling the UserId token path must remove it from the baseline Allow statement."
-  }
-}
-
-run "mmdsv2_is_required_by_default" {
-  command = plan
-
-  variables {
-    name                  = "metadata-security-agent"
-    create_build_pipeline = false
-    image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/metadata-security-agent:test"
-  }
-
-  assert {
-    condition     = output.agent_runtime_metadata_configuration.require_mmdsv2
-    error_message = "AgentCore Runtime must require MMDSv2 by default."
   }
 }

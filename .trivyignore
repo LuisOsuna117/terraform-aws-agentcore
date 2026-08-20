@@ -21,11 +21,10 @@ AVD-AWS-0089
 AVD-AWS-0132
 AVD-AWS-0011
 
-# IAM — wildcard Bedrock resource in the inline policy
-# The execution role grants bedrock:InvokeModel on "*" by default so the agent
-# can call any foundation model.  Callers should narrow this using
-# additional_iam_statements and attach_bedrock_fullaccess_policy = false.
-# The README documents this pattern explicitly.
+# IAM — reusable opt-in statements
+# AWS APIs such as ECR authorization, X-Ray, and metric publishing require
+# wildcard resources. Wildcard model invocation exists only behind the
+# allow_bedrock_invoke_all opt-in, whose default is false.
 AVD-AWS-0057
 AVD-AWS-0030
 

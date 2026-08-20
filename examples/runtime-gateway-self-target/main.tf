@@ -13,12 +13,13 @@ module "agentcore" {
   source = "../.."
   # Uncomment once published to the registry:
   # source  = "LuisOsuna117/agentcore/aws"
-  # version = "~> 0.5"
+  # version = "~> 1.0"
 
   name = var.name
 
   create_runtime        = true
   create_build_pipeline = false
+  create_execution_role = true
   create_gateway        = true
 
   image_uri       = var.image_uri

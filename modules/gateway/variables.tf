@@ -34,18 +34,36 @@ variable "role_arn" {
   }
 }
 
+variable "role_policy_arns" {
+  description = "Managed policy ARNs to attach to the module-created Gateway role. Ignored when create_role is false."
+  type        = set(string)
+  default     = []
+}
+
+variable "role_policy_statements" {
+  description = "Additional least-privilege IAM statements for the module-created Gateway role, for example Smithy services or credential providers."
+  type = list(object({
+    sid       = optional(string)
+    effect    = optional(string, "Allow")
+    actions   = set(string)
+    resources = set(string)
+    condition = optional(any)
+  }))
+  default = []
+}
+
 # ==============================================================================
 # Authorizer
 # ==============================================================================
 
 variable "authorizer_type" {
-  description = "Type of request authorizer. \"CUSTOM_JWT\" requires authorizer_configuration. \"AWS_IAM\" uses AWS Signature Version 4."
+  description = "Inbound authorizer: CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE. Offloaded authorization modes must be protected by a Policy Engine or downstream authorization."
   type        = string
   default     = "AWS_IAM"
 
   validation {
-    condition     = contains(["CUSTOM_JWT", "AWS_IAM"], var.authorizer_type)
-    error_message = "authorizer_type must be either \"CUSTOM_JWT\" or \"AWS_IAM\"."
+    condition     = contains(["CUSTOM_JWT", "AWS_IAM", "AUTHENTICATE_ONLY", "NONE"], var.authorizer_type)
+    error_message = "authorizer_type must be CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE."
   }
 }
 
@@ -54,17 +72,97 @@ variable "authorizer_configuration" {
     JWT authorizer configuration. Required when authorizer_type = "CUSTOM_JWT".
     Shape:
       {
-        discovery_url    = string                    # OIDC discovery URL (must end with /.well-known/openid-configuration)
-        allowed_audience = optional(list(string))   # Allowed JWT audience values
-        allowed_clients  = optional(list(string))   # Allowed JWT client IDs
+        discovery_url            = string
+        allowed_audience         = optional(set(string))
+        allowed_clients          = optional(set(string))
+        allowed_scopes           = optional(set(string))
+        workload_identities      = optional(list(string))
+        hosting_environment_arns = optional(list(string))
+        custom_claims            = optional(set(object(...)))
+        private_endpoint         = optional(object(...))
+        private_endpoint_overrides = optional(list(object(...)))
       }
   EOT
   type = object({
-    discovery_url    = string
-    allowed_audience = optional(list(string), [])
-    allowed_clients  = optional(list(string), [])
+    discovery_url            = string
+    allowed_audience         = optional(set(string), [])
+    allowed_clients          = optional(set(string), [])
+    allowed_scopes           = optional(set(string), [])
+    workload_identities      = optional(list(string), [])
+    hosting_environment_arns = optional(list(string), [])
+    custom_claims = optional(set(object({
+      inbound_token_claim_name       = string
+      inbound_token_claim_value_type = string
+      claim_match_operator           = string
+      match_value_string             = optional(string)
+      match_value_string_list        = optional(set(string))
+    })), [])
+    private_endpoint = optional(object({
+      managed_vpc_resource = optional(object({
+        endpoint_ip_address_type = string
+        subnet_ids               = set(string)
+        vpc_identifier           = string
+        routing_domain           = optional(string)
+        security_group_ids       = optional(set(string), [])
+        tags                     = optional(map(string), {})
+      }))
+      self_managed_lattice_resource = optional(object({
+        resource_configuration_identifier = string
+      }))
+    }))
+    private_endpoint_overrides = optional(list(object({
+      domain = string
+      private_endpoint = object({
+        managed_vpc_resource = optional(object({
+          endpoint_ip_address_type = string
+          subnet_ids               = set(string)
+          vpc_identifier           = string
+          routing_domain           = optional(string)
+          security_group_ids       = optional(set(string), [])
+          tags                     = optional(map(string), {})
+        }))
+        self_managed_lattice_resource = optional(object({
+          resource_configuration_identifier = string
+        }))
+      })
+    })), [])
   })
   default = null
+
+  validation {
+    condition = var.authorizer_configuration == null ? true : alltrue([
+      for claim in var.authorizer_configuration.custom_claims : (
+        contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
+        contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
+        ((claim.match_value_string != null) != (claim.match_value_string_list != null)) &&
+        (claim.claim_match_operator != "EQUALS" || claim.inbound_token_claim_value_type == "STRING") &&
+        (!contains(["CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) || claim.inbound_token_claim_value_type == "STRING_ARRAY") &&
+        (claim.claim_match_operator != "CONTAINS_ANY" || claim.match_value_string_list != null) &&
+        (claim.claim_match_operator == "CONTAINS_ANY" || claim.match_value_string != null)
+      )
+    ])
+    error_message = "Each JWT custom claim must use a compatible value type, operator, and exactly one match value shape."
+  }
+
+  validation {
+    condition = var.authorizer_configuration == null ? true : (
+      var.authorizer_configuration.private_endpoint == null ? true : (
+        (var.authorizer_configuration.private_endpoint.managed_vpc_resource != null) !=
+        (var.authorizer_configuration.private_endpoint.self_managed_lattice_resource != null)
+      )
+    )
+    error_message = "authorizer_configuration.private_endpoint must configure exactly one managed or self-managed VPC resource."
+  }
+
+  validation {
+    condition = var.authorizer_configuration == null ? true : alltrue([
+      for override in var.authorizer_configuration.private_endpoint_overrides : (
+        (override.private_endpoint.managed_vpc_resource != null) !=
+        (override.private_endpoint.self_managed_lattice_resource != null)
+      )
+    ])
+    error_message = "Each JWT private endpoint override must configure exactly one managed or self-managed VPC resource."
+  }
 }
 
 # ==============================================================================
@@ -93,11 +191,27 @@ variable "protocol_configuration" {
       }
   EOT
   type = object({
-    instructions       = optional(string)
-    search_type        = optional(string)
-    supported_versions = optional(list(string), [])
+    instructions               = optional(string)
+    search_type                = optional(string)
+    supported_versions         = optional(set(string), [])
+    session_timeout_in_seconds = optional(number)
+    enable_response_streaming  = optional(bool)
   })
   default = null
+}
+
+variable "policy_engine_configuration" {
+  description = "Optional Policy Engine association for Gateway authorization."
+  type = object({
+    arn  = string
+    mode = string
+  })
+  default = null
+
+  validation {
+    condition     = var.policy_engine_configuration == null ? true : contains(["LOG_ONLY", "ENFORCE"], var.policy_engine_configuration.mode)
+    error_message = "policy_engine_configuration.mode must be LOG_ONLY or ENFORCE."
+  }
 }
 
 # ==============================================================================
@@ -131,197 +245,29 @@ variable "interceptor_configurations" {
 # ==============================================================================
 
 variable "targets" {
-  description = <<-EOT
-    Map of Gateway Targets. Each entry selects its target type explicitly.
-
-    Shape:
-      {
-        target_type               = string               # "MCP" or "AGENT"
-        name                      = optional(string)     # Target name; defaults to the map key
-        description               = optional(string)
-        endpoint                  = optional(string)     # MCP HTTPS server endpoint
-        agent_runtime_arn         = optional(string)     # Runtime ARN for MCP or AGENT targets
-        qualifier                 = optional(string)     # Runtime qualifier; defaults to "DEFAULT"
-        schema                    = optional(object({    # Optional AGENT API schema
-          inline_payload          = optional(string)
-          s3                      = optional(object({
-            uri                   = string
-            bucket_owner_account_id = optional(string)
-          }))
-        }))
-        allowed_query_parameters  = optional(list(string))
-        allowed_request_headers   = optional(list(string))
-        allowed_response_headers  = optional(list(string))
-      }
-
-    MCP targets must provide exactly one of endpoint or agent_runtime_arn. AGENT
-    targets must provide agent_runtime_arn and are attached to a gateway whose
-    effective protocol_type is null.
-  EOT
-  type = map(object({
-    target_type       = string
-    name              = optional(string)
-    description       = optional(string)
-    endpoint          = optional(string)
-    agent_runtime_arn = optional(string)
-    qualifier         = optional(string, "DEFAULT")
-    schema = optional(object({
-      inline_payload = optional(string)
-      s3 = optional(object({
-        uri                     = string
-        bucket_owner_account_id = optional(string)
-      }))
-    }))
-    allowed_query_parameters = optional(list(string), [])
-    allowed_request_headers  = optional(list(string), [])
-    allowed_response_headers = optional(list(string), [])
-  }))
-  default = {}
+  description = "Map of general Gateway Targets. Each entry uses the native target_configuration, credential, metadata, private endpoint, and timeout shapes."
+  type        = any
+  default     = {}
 
   validation {
-    condition = alltrue([
-      for target in values(var.targets) : contains(["MCP", "AGENT"], upper(target.target_type))
+    condition = can(keys(var.targets)) && alltrue([
+      for target in values(var.targets) : try(target.name, null) == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
     ])
-    error_message = "Each targets entry target_type must be either \"MCP\" or \"AGENT\"."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      upper(target.target_type) != "MCP" || length(compact([
-        try(trimspace(target.endpoint), ""),
-        try(trimspace(target.agent_runtime_arn), ""),
-      ])) == 1
-    ])
-    error_message = "Each MCP targets entry must provide exactly one of endpoint or agent_runtime_arn."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      upper(target.target_type) != "AGENT" || (
-        try(trimspace(target.agent_runtime_arn), "") != "" &&
-        try(trimspace(target.endpoint), "") == ""
-      )
-    ])
-    error_message = "Each AGENT targets entry must provide agent_runtime_arn and must not set endpoint."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
-    ])
-    error_message = "Each explicit target endpoint must start with https://."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
-    ])
-    error_message = "Each agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
-    ])
-    error_message = "Each target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) :
-      target.schema == null || length(compact([
-        try(trimspace(target.schema.inline_payload), ""),
-        try(trimspace(target.schema.s3.uri), ""),
-      ])) == 1
-    ])
-    error_message = "Each target schema must provide exactly one of inline_payload or s3."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.targets) : target.schema == null || upper(target.target_type) == "AGENT"
-    ])
-    error_message = "The schema attribute is only supported for AGENT targets."
+    error_message = "Each Gateway Target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
   }
 }
 
-variable "mcp_targets" {
-  description = <<-EOT
-    Deprecated compatibility alias for MCP Gateway Targets. Prefer targets with
-    target_type = "MCP" for new configurations.
-    Each map key is used as the target name unless name is set.
-
-    Shape:
-      {
-        name                     = optional(string)       # Target name; defaults to the map key
-        description              = optional(string)       # Target description
-        endpoint                 = optional(string)       # Explicit HTTPS MCP server endpoint
-        agent_runtime_arn        = optional(string)       # AgentCore Runtime ARN; endpoint and SigV4 auth are derived
-        qualifier                = optional(string)       # AgentCore Runtime qualifier; defaults to "DEFAULT"
-        allowed_query_parameters = optional(list(string)) # Query parameters propagated to the target
-        allowed_request_headers  = optional(list(string)) # Request headers propagated to the target
-        allowed_response_headers = optional(list(string)) # Response headers propagated from the target
-      }
-
-    Exactly one of endpoint or agent_runtime_arn must be provided for each target.
-  EOT
-  type = map(object({
-    name                     = optional(string)
-    description              = optional(string)
-    endpoint                 = optional(string)
-    agent_runtime_arn        = optional(string)
-    qualifier                = optional(string, "DEFAULT")
-    allowed_query_parameters = optional(list(string), [])
-    allowed_request_headers  = optional(list(string), [])
-    allowed_response_headers = optional(list(string), [])
-  }))
-  default = {}
+variable "runtime_invoke_arns" {
+  description = "Additional AgentCore Runtime ARNs the module-created Gateway role may invoke. HTTP Runtime target ARNs are inferred automatically."
+  type        = list(string)
+  default     = []
 
   validation {
     condition = alltrue([
-      for target in values(var.mcp_targets) :
-      length(compact([
-        try(trimspace(target.endpoint), ""),
-        try(trimspace(target.agent_runtime_arn), ""),
-      ])) == 1
+      for arn in var.runtime_invoke_arns : can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", arn))
     ])
-    error_message = "Each mcp_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+    error_message = "Each runtime_invoke_arns value must be a valid Bedrock AgentCore Runtime ARN."
   }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.mcp_targets) :
-      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
-    ])
-    error_message = "Each explicit MCP target endpoint must start with https://."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.mcp_targets) :
-      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
-    ])
-    error_message = "Each agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
-  }
-
-  validation {
-    condition = alltrue([
-      for target in values(var.mcp_targets) :
-      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
-    ])
-    error_message = "Each MCP target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
-  }
-}
-
-variable "agent_runtime_target_keys" {
-  description = "Plan-known MCP target keys that represent AgentCore Runtime targets. When null, keys are inferred from targets without an explicit endpoint."
-  type        = set(string)
-  default     = null
 }
 
 # ==============================================================================
@@ -335,14 +281,30 @@ variable "kms_key_arn" {
 }
 
 variable "exception_level" {
-  description = "Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR."
+  description = "Exception detail level exposed via the gateway. AgentCore currently accepts only DEBUG."
   type        = string
   default     = null
 
   validation {
-    condition     = var.exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.exception_level)
-    error_message = "exception_level must be one of INFO, WARN, or ERROR."
+    condition     = var.exception_level == null ? true : var.exception_level == "DEBUG"
+    error_message = "exception_level must be DEBUG or null."
   }
+}
+
+variable "region" {
+  description = "AWS Region in which to manage the Gateway. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "timeouts" {
+  description = "Optional create, update, and delete timeouts for the Gateway."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }
 
 # ==============================================================================

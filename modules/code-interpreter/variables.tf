@@ -43,6 +43,27 @@ variable "vpc_subnet_ids" {
   default     = []
 }
 
+variable "certificate_secret_arn" {
+  description = "Optional Secrets Manager ARN containing the Code Interpreter certificate."
+  type        = string
+  default     = null
+}
+
+variable "region" {
+  description = "AWS Region in which to manage the Code Interpreter. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "timeouts" {
+  description = "Optional create and delete timeouts for the Code Interpreter."
+  type = object({
+    create = optional(string)
+    delete = optional(string)
+  })
+  default = null
+}
+
 variable "tags" {
   description = "Tags applied to the Code Interpreter."
   type        = map(string)

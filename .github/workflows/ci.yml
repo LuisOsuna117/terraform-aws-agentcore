@@ -14,6 +14,16 @@ permissions:
   contents: read
 
 jobs:
+  contract:
+    name: Public contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Reject stale interfaces and incomplete matrices
+        run: bash scripts/check-public-contract.sh
+
   # ----------------------------------------------------------------------------
   # 1. Format
   # ----------------------------------------------------------------------------
@@ -22,9 +32,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
@@ -36,54 +46,134 @@ jobs:
   # 2. Validate (root module + examples)
   # ----------------------------------------------------------------------------
   validate:
-    name: Validate
+    name: Validate (${{ matrix.path }})
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+    strategy:
+      fail-fast: false
+      matrix:
+        path:
+          - .
+          - examples/basic
+          - examples/byo-image
+          - examples/codebuild-no-trigger
+          - examples/gateway-only
+          - examples/gateway-runtime-target
+          - examples/gateway-multiple-targets
+          - examples/runtime-gateway-self-target
+          - examples/identity
+          - examples/policy
+          - examples/browser
+          - examples/managed-harness
+          - examples/evaluation
+          - examples/runtime-endpoint
+          - examples/memory-strategy
+          - examples/gateway-target
+          - examples/gateway-rule
 
-      - uses: opentofu/setup-opentofu@v1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
 
-      - name: Init root module
+      - name: Init
+        working-directory: ${{ matrix.path }}
         run: tofu init -backend=false
 
-      - name: Validate root module
+      - name: Validate
+        working-directory: ${{ matrix.path }}
         run: tofu validate
 
-      - name: Init examples/basic
-        working-directory: examples/basic
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+
+      - name: Init
         run: tofu init -backend=false
 
-      - name: Validate examples/basic
-        working-directory: examples/basic
-        run: tofu validate
+      - name: Run module tests
+        run: tofu test
+
+  terraform-compat:
+    name: Terraform 1.11 compatibility
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.11.4"
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Validate and test root module
+        run: |
+          terraform init -backend=false
+          terraform validate
+          terraform test
+
+      - name: Validate native Gateway Target example
+        working-directory: examples/gateway-target
+        run: |
+          terraform init -backend=false
+          terraform validate
 
   # ----------------------------------------------------------------------------
   # 3. Lint (TFLint)
   # ----------------------------------------------------------------------------
   tflint:
-    name: TFLint
+    name: TFLint (${{ matrix.path }})
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+    strategy:
+      fail-fast: false
+      matrix:
+        path:
+          - .
+          - examples/basic
+          - examples/byo-image
+          - examples/codebuild-no-trigger
+          - examples/gateway-only
+          - examples/gateway-runtime-target
+          - examples/gateway-multiple-targets
+          - examples/runtime-gateway-self-target
+          - examples/identity
+          - examples/policy
+          - examples/browser
+          - examples/managed-harness
+          - examples/evaluation
+          - examples/runtime-endpoint
+          - examples/memory-strategy
+          - examples/gateway-target
+          - examples/gateway-rule
 
-      - uses: terraform-linters/setup-tflint@v4
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
       - name: Init TFLint
         run: tflint --init
 
-      - name: Lint root module
-        run: tflint --config .tflint.hcl
-
-      - name: Lint examples/basic
-        working-directory: examples/basic
-        run: tflint --config ../../.tflint.hcl
+      - name: Lint
+        working-directory: ${{ matrix.path }}
+        run: tflint --config ${{ matrix.path == '.' && '.tflint.hcl' || '../../.tflint.hcl' }}
 
   # ----------------------------------------------------------------------------
   # 4. Security scan (Trivy)
@@ -97,7 +187,7 @@ jobs:
       security-events: write   # upload SARIF to GitHub Code Scanning
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run Trivy (IaC)
         uses: aquasecurity/trivy-action@v0.36.0
@@ -129,7 +219,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
 
@@ -141,7 +231,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # terraform-docs needs write-access to check diff; grant fetch only.
           ref: ${{ github.head_ref }}
@@ -149,7 +239,7 @@ jobs:
       - name: Check terraform-docs drift
         uses: terraform-docs/gh-actions@v1
         with:
-          working-dir: .
+          working-dir: .,modules/browser,modules/build,modules/code-interpreter,modules/evaluation,modules/gateway,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory,modules/memory-strategy,modules/policy,modules/runtime,modules/runtime-endpoint
           output-file: README.md
           output-method: inject
           git-push: "false"
@@ -164,9 +254,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "lts/*"
 

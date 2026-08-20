@@ -7,10 +7,11 @@
 # resulting image exists in ECR. Called automatically by the null_resource
 # trigger in codebuild.tf — not intended to be run manually.
 #
-# Usage:
-#   build-image.sh <project-name> <region> <ecr-repo-name> <image-tag> <ecr-repo-url>
+# Required environment variables:
+#   CODEBUILD_PROJECT_NAME, BUILD_AWS_REGION, ECR_REPOSITORY_NAME,
+#   ECR_IMAGE_TAG, ECR_REPOSITORY_URL
 #
-# Environment variables (optional):
+# Optional environment variables:
 #   BUILD_TIMEOUT_MINUTES   Max minutes to wait for the build (default: 60)
 #   NO_COLOR                Set to any value to disable coloured output
 #
@@ -20,19 +21,14 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Argument validation
+# Input validation
 # ------------------------------------------------------------------------------
 
-if [[ $# -lt 5 ]]; then
-  echo "Usage: $0 <project-name> <region> <ecr-repo-name> <image-tag> <ecr-repo-url>" >&2
-  exit 1
-fi
-
-PROJECT_NAME="$1"
-REGION="$2"
-REPO_NAME="$3"
-IMAGE_TAG="$4"
-REPO_URL="$5"
+PROJECT_NAME="${CODEBUILD_PROJECT_NAME:?CODEBUILD_PROJECT_NAME is required}"
+REGION="${BUILD_AWS_REGION:?BUILD_AWS_REGION is required}"
+REPO_NAME="${ECR_REPOSITORY_NAME:?ECR_REPOSITORY_NAME is required}"
+IMAGE_TAG="${ECR_IMAGE_TAG:?ECR_IMAGE_TAG is required}"
+REPO_URL="${ECR_REPOSITORY_URL:?ECR_REPOSITORY_URL is required}"
 
 # Timeout: respect BUILD_TIMEOUT_MINUTES env var, otherwise default to 60.
 TIMEOUT_MINUTES="${BUILD_TIMEOUT_MINUTES:-60}"

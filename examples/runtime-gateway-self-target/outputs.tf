@@ -12,8 +12,3 @@ output "gateway_runtime_target_id" {
   description = "Gateway target ID for the module-created runtime target."
   value       = module.agentcore.gateway_runtime_target_id
 }
-
-output "gateway_target_endpoints" {
-  description = "Map of MCP target keys to resolved MCP server endpoints."
-  value       = module.agentcore.gateway_target_endpoints
-}
