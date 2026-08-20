@@ -75,9 +75,46 @@ variable "create_runtime" {
 }
 
 variable "image_uri" {
-  description = "Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create_runtime = true and create_build_pipeline = false. Must be null when create_build_pipeline = true."
+  description = "Tagged or digest-pinned Amazon ECR image URI. With an external artifact, set exactly one of image_uri or runtime_code_configuration."
   type        = string
   default     = null
+
+  validation {
+    condition     = var.image_uri == null || can(regex("^[0-9]{12}\\.dkr\\.ecr(?:-fips)?\\.[a-z0-9-]+\\.amazonaws\\.com(?:\\.cn)?/[a-z0-9._/-]+(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$", var.image_uri))
+    error_message = "image_uri must be a tagged or digest-pinned Amazon ECR image URI."
+  }
+}
+
+variable "runtime_code_configuration" {
+  description = "Optional direct Runtime code artifact stored in S3. With an external artifact, set exactly one of this value or image_uri."
+  type = object({
+    entry_point = list(string)
+    runtime     = string
+    s3 = object({
+      bucket     = string
+      prefix     = string
+      version_id = optional(string)
+    })
+  })
+  default = null
+}
+
+variable "runtime_filesystems" {
+  description = "Opt-in Runtime session, S3 Files, or EFS filesystem mounts."
+  type = list(object({
+    session_storage = optional(object({
+      mount_path = string
+    }))
+    s3_files_access_point = optional(object({
+      access_point_arn = string
+      mount_path       = string
+    }))
+    efs_access_point = optional(object({
+      access_point_arn = string
+      mount_path       = string
+    }))
+  }))
+  default = []
 }
 
 variable "trigger_build_on_apply" {
@@ -98,36 +135,73 @@ variable "environment_variables" {
   default     = {}
 }
 
-variable "runtime_metadata_configuration" {
-  description = "AgentCore Runtime microVM metadata configuration. require_mmdsv2 maps to metadataConfiguration.requireMMDSV2. Until the AWS provider exposes this field, the runtime submodule applies it with UpdateAgentRuntime through the AWS CLI. Set to null only to disable the compatibility update."
-  type = object({
-    require_mmdsv2 = bool
-  })
-  default = {
-    require_mmdsv2 = true
-  }
-}
-
 # ==============================================================================
 # Runtime — Authorizer
 # ==============================================================================
 
-variable "authorizer_discovery_url" {
-  description = "OIDC discovery URL for JWT authorisation on the runtime endpoint (must end with /.well-known/openid-configuration). When null, the endpoint is unauthenticated at the AgentCore layer."
+variable "runtime_authorizer_configuration" {
+  description = "Optional CUSTOM_JWT Runtime authorizer with scopes, workload restrictions, custom claims, and private issuer connectivity."
+  type = object({
+    discovery_url            = string
+    allowed_audience         = optional(set(string), [])
+    allowed_clients          = optional(set(string), [])
+    allowed_scopes           = optional(set(string), [])
+    workload_identities      = optional(list(string), [])
+    hosting_environment_arns = optional(list(string), [])
+    custom_claims = optional(set(object({
+      inbound_token_claim_name       = string
+      inbound_token_claim_value_type = string
+      claim_match_operator           = string
+      match_value_string             = optional(string)
+      match_value_string_list        = optional(set(string))
+    })), [])
+    private_endpoint = optional(object({
+      managed_vpc_resource = optional(object({
+        endpoint_ip_address_type = string
+        subnet_ids               = set(string)
+        vpc_identifier           = string
+        routing_domain           = optional(string)
+        security_group_ids       = optional(set(string), [])
+        tags                     = optional(map(string), {})
+      }))
+      self_managed_lattice_resource = optional(object({
+        resource_configuration_identifier = string
+      }))
+    }))
+    private_endpoint_overrides = optional(list(object({
+      domain = string
+      private_endpoint = object({
+        managed_vpc_resource = optional(object({
+          endpoint_ip_address_type = string
+          subnet_ids               = set(string)
+          vpc_identifier           = string
+          routing_domain           = optional(string)
+          security_group_ids       = optional(set(string), [])
+          tags                     = optional(map(string), {})
+        }))
+        self_managed_lattice_resource = optional(object({
+          resource_configuration_identifier = string
+        }))
+      })
+    })), [])
+  })
+  default = null
+}
+
+variable "runtime_region" {
+  description = "AWS Region in which to manage the Runtime. Defaults to the provider Region."
   type        = string
   default     = null
 }
 
-variable "authorizer_allowed_audience" {
-  description = "Set of allowed JWT audience values. Ignored when authorizer_discovery_url is null."
-  type        = list(string)
-  default     = []
-}
-
-variable "authorizer_allowed_clients" {
-  description = "Set of allowed client IDs for JWT token validation. Ignored when authorizer_discovery_url is null."
-  type        = list(string)
-  default     = []
+variable "runtime_timeouts" {
+  description = "Optional create, update, and delete timeouts for the Runtime."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }
 
 # ==============================================================================

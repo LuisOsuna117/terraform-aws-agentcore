@@ -1,77 +1,45 @@
-data "aws_region" "current" {}
+resource "terraform_data" "validations" {
+  lifecycle {
+    precondition {
+      condition     = (var.image_uri != null) != (var.code_configuration != null)
+      error_message = "Configure exactly one Runtime artifact: image_uri or code_configuration."
+    }
 
-locals {
-  # UpdateAgentRuntime requires the artifact, role, and network configuration
-  # even when only metadataConfiguration changes. Mirror every runtime setting
-  # managed by this submodule so the compatibility update is non-destructive.
-  runtime_update_input = merge(
-    {
-      agentRuntimeId = aws_bedrockagentcore_agent_runtime.this.agent_runtime_id
-      agentRuntimeArtifact = {
-        containerConfiguration = {
-          containerUri = var.image_uri
-        }
-      }
-      description = var.description
-      roleArn     = var.execution_role_arn
-      networkConfiguration = merge(
-        {
-          networkMode = var.network_mode
-        },
-        var.network_mode == "VPC" ? {
-          networkModeConfig = {
-            securityGroups = var.vpc_security_group_ids
-            subnets        = var.vpc_subnet_ids
-          }
-        } : {},
-      )
-    },
-    var.metadata_configuration != null ? {
-      metadataConfiguration = {
-        requireMMDSV2 = var.metadata_configuration.require_mmdsv2
-      }
-    } : {},
-    var.authorizer_discovery_url != null ? {
-      authorizerConfiguration = {
-        customJWTAuthorizer = merge(
-          {
-            discoveryUrl = var.authorizer_discovery_url
-          },
-          length(var.authorizer_allowed_audience) > 0 ? { allowedAudience = var.authorizer_allowed_audience } : {},
-          length(var.authorizer_allowed_clients) > 0 ? { allowedClients = var.authorizer_allowed_clients } : {},
-        )
-      }
-    } : {},
-    var.idle_runtime_session_timeout != null || var.max_lifetime != null ? {
-      lifecycleConfiguration = merge(
-        var.idle_runtime_session_timeout != null ? { idleRuntimeSessionTimeout = var.idle_runtime_session_timeout } : {},
-        var.max_lifetime != null ? { maxLifetime = var.max_lifetime } : {},
-      )
-    } : {},
-    var.server_protocol != null ? {
-      protocolConfiguration = {
-        serverProtocol = var.server_protocol
-      }
-    } : {},
-    length(var.request_header_allowlist) > 0 ? {
-      requestHeaderConfiguration = {
-        requestHeaderAllowlist = var.request_header_allowlist
-      }
-    } : {},
-    length(var.environment_variables) > 0 ? {
-      environmentVariables = var.environment_variables
-    } : {},
-  )
+    precondition {
+      condition     = var.network_mode != "VPC" || (length(var.vpc_security_group_ids) > 0 && length(var.vpc_subnet_ids) > 0)
+      error_message = "VPC Runtime mode requires at least one security group and subnet."
+    }
+  }
 }
 
 resource "aws_bedrockagentcore_agent_runtime" "this" {
   agent_runtime_name = var.runtime_name
   description        = var.description
   role_arn           = var.execution_role_arn
+  region             = var.region
 
   agent_runtime_artifact {
-    container_configuration {
-      container_uri = var.image_uri
+    dynamic "container_configuration" {
+      for_each = var.image_uri == null ? [] : [var.image_uri]
+      content {
+        container_uri = container_configuration.value
+      }
+    }
+
+    dynamic "code_configuration" {
+      for_each = var.code_configuration == null ? [] : [var.code_configuration]
+      content {
+        entry_point = code_configuration.value.entry_point
+        runtime     = code_configuration.value.runtime
+
+        code {
+          s3 {
+            bucket     = code_configuration.value.s3.bucket
+            prefix     = code_configuration.value.s3.prefix
+            version_id = code_configuration.value.s3.version_id
+          }
+        }
+      }
     }
   }
 
@@ -88,18 +56,130 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
   }
 
   dynamic "authorizer_configuration" {
-    for_each = var.authorizer_discovery_url != null ? [1] : []
+    for_each = var.authorizer_configuration == null ? [] : [var.authorizer_configuration]
     content {
       custom_jwt_authorizer {
-        discovery_url    = var.authorizer_discovery_url
-        allowed_audience = var.authorizer_allowed_audience
-        allowed_clients  = var.authorizer_allowed_clients
+        discovery_url    = authorizer_configuration.value.discovery_url
+        allowed_audience = authorizer_configuration.value.allowed_audience
+        allowed_clients  = authorizer_configuration.value.allowed_clients
+        allowed_scopes   = authorizer_configuration.value.allowed_scopes
+
+        dynamic "allowed_workload_configuration" {
+          for_each = length(authorizer_configuration.value.workload_identities) + length(authorizer_configuration.value.hosting_environment_arns) == 0 ? [] : [1]
+          content {
+            workload_identities = authorizer_configuration.value.workload_identities
+
+            dynamic "hosting_environment" {
+              for_each = authorizer_configuration.value.hosting_environment_arns
+              content {
+                arn = hosting_environment.value
+              }
+            }
+          }
+        }
+
+        dynamic "custom_claim" {
+          for_each = authorizer_configuration.value.custom_claims
+          content {
+            inbound_token_claim_name       = custom_claim.value.inbound_token_claim_name
+            inbound_token_claim_value_type = custom_claim.value.inbound_token_claim_value_type
+
+            authorizing_claim_match_value {
+              claim_match_operator = custom_claim.value.claim_match_operator
+
+              claim_match_value {
+                match_value_string      = custom_claim.value.match_value_string
+                match_value_string_list = custom_claim.value.match_value_string_list
+              }
+            }
+          }
+        }
+
+        dynamic "private_endpoint" {
+          for_each = authorizer_configuration.value.private_endpoint == null ? [] : [authorizer_configuration.value.private_endpoint]
+          content {
+            dynamic "managed_vpc_resource" {
+              for_each = private_endpoint.value.managed_vpc_resource == null ? [] : [private_endpoint.value.managed_vpc_resource]
+              content {
+                endpoint_ip_address_type = managed_vpc_resource.value.endpoint_ip_address_type
+                subnet_ids               = managed_vpc_resource.value.subnet_ids
+                vpc_identifier           = managed_vpc_resource.value.vpc_identifier
+                routing_domain           = managed_vpc_resource.value.routing_domain
+                security_group_ids       = managed_vpc_resource.value.security_group_ids
+                tags                     = managed_vpc_resource.value.tags
+              }
+            }
+
+            dynamic "self_managed_lattice_resource" {
+              for_each = private_endpoint.value.self_managed_lattice_resource == null ? [] : [private_endpoint.value.self_managed_lattice_resource]
+              content {
+                resource_configuration_identifier = self_managed_lattice_resource.value.resource_configuration_identifier
+              }
+            }
+          }
+        }
+
+        dynamic "private_endpoint_overrides" {
+          for_each = authorizer_configuration.value.private_endpoint_overrides
+          content {
+            domain = private_endpoint_overrides.value.domain
+
+            private_endpoint {
+              dynamic "managed_vpc_resource" {
+                for_each = private_endpoint_overrides.value.private_endpoint.managed_vpc_resource == null ? [] : [private_endpoint_overrides.value.private_endpoint.managed_vpc_resource]
+                content {
+                  endpoint_ip_address_type = managed_vpc_resource.value.endpoint_ip_address_type
+                  subnet_ids               = managed_vpc_resource.value.subnet_ids
+                  vpc_identifier           = managed_vpc_resource.value.vpc_identifier
+                  routing_domain           = managed_vpc_resource.value.routing_domain
+                  security_group_ids       = managed_vpc_resource.value.security_group_ids
+                  tags                     = managed_vpc_resource.value.tags
+                }
+              }
+
+              dynamic "self_managed_lattice_resource" {
+                for_each = private_endpoint_overrides.value.private_endpoint.self_managed_lattice_resource == null ? [] : [private_endpoint_overrides.value.private_endpoint.self_managed_lattice_resource]
+                content {
+                  resource_configuration_identifier = self_managed_lattice_resource.value.resource_configuration_identifier
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  dynamic "filesystem_configuration" {
+    for_each = var.filesystems
+    content {
+      dynamic "session_storage" {
+        for_each = filesystem_configuration.value.session_storage == null ? [] : [filesystem_configuration.value.session_storage]
+        content {
+          mount_path = session_storage.value.mount_path
+        }
+      }
+
+      dynamic "s3_files_access_point" {
+        for_each = filesystem_configuration.value.s3_files_access_point == null ? [] : [filesystem_configuration.value.s3_files_access_point]
+        content {
+          access_point_arn = s3_files_access_point.value.access_point_arn
+          mount_path       = s3_files_access_point.value.mount_path
+        }
+      }
+
+      dynamic "efs_access_point" {
+        for_each = filesystem_configuration.value.efs_access_point == null ? [] : [filesystem_configuration.value.efs_access_point]
+        content {
+          access_point_arn = efs_access_point.value.access_point_arn
+          mount_path       = efs_access_point.value.mount_path
+        }
       }
     }
   }
 
   dynamic "lifecycle_configuration" {
-    for_each = (var.idle_runtime_session_timeout != null || var.max_lifetime != null) ? [1] : []
+    for_each = var.idle_runtime_session_timeout != null || var.max_lifetime != null ? [1] : []
     content {
       idle_runtime_session_timeout = var.idle_runtime_session_timeout
       max_lifetime                 = var.max_lifetime
@@ -121,30 +201,16 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
   }
 
   environment_variables = var.environment_variables
-}
+  tags                  = var.tags
 
-# metadataConfiguration is available in the AgentCore UpdateAgentRuntime API
-# but not yet in hashicorp/aws. Keep this temporary bridge isolated so it can
-# be replaced by a native metadata_configuration block when provider support
-# lands.
-resource "local_sensitive_file" "runtime_update_input" {
-  count = var.metadata_configuration != null ? 1 : 0
-
-  content         = jsonencode(local.runtime_update_input)
-  filename        = "${path.root}/.terraform/agentcore-${aws_bedrockagentcore_agent_runtime.this.agent_runtime_id}-metadata.json"
-  file_permission = "0600"
-}
-
-resource "terraform_data" "metadata_configuration" {
-  count = var.metadata_configuration != null ? 1 : 0
-
-  triggers_replace = [local_sensitive_file.runtime_update_input[0].content_sha256]
-
-  provisioner "local-exec" {
-    command = "aws bedrock-agentcore-control update-agent-runtime --cli-input-json \"file://${local_sensitive_file.runtime_update_input[0].filename}\" --region \"${data.aws_region.current.region}\" --no-cli-pager"
-
-    environment = {
-      AWS_PAGER = ""
+  dynamic "timeouts" {
+    for_each = var.timeouts == null ? [] : [var.timeouts]
+    content {
+      create = timeouts.value.create
+      update = timeouts.value.update
+      delete = timeouts.value.delete
     }
   }
+
+  depends_on = [terraform_data.validations]
 }

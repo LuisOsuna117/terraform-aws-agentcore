@@ -27,11 +27,6 @@ output "agent_runtime_network_mode" {
   value       = var.create_runtime ? var.network_mode : null
 }
 
-output "agent_runtime_metadata_configuration" {
-  description = "Requested microVM metadata configuration applied to the AgentCore runtime. Null when create_runtime = false or the compatibility update is disabled."
-  value       = var.create_runtime ? module.runtime[0].metadata_configuration : null
-}
-
 output "agent_runtime_workload_identity_arn" {
   description = "Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create_runtime = false."
   value       = var.create_runtime ? module.runtime[0].workload_identity_arn : null
@@ -72,12 +67,6 @@ output "code_interpreter_execution_role_arn" {
 
 output "effective_image_uri" {
   description = "The container image URI used by the runtime. When create_build_pipeline = true this is the ECR repo URL + image_tag; when create_build_pipeline = false this is the caller-supplied image_uri."
-  value       = local.effective_image_uri
-}
-
-# Backwards-compatible alias kept for existing callers.
-output "container_image_uri" {
-  description = "Alias for effective_image_uri. Kept for backwards compatibility."
   value       = local.effective_image_uri
 }
 

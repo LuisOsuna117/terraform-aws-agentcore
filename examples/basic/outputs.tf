@@ -13,9 +13,9 @@ output "agent_runtime_name" {
   value       = module.agentcore.agent_runtime_name
 }
 
-output "container_image_uri" {
+output "effective_image_uri" {
   description = "Full container image URI deployed to the runtime."
-  value       = module.agentcore.container_image_uri
+  value       = module.agentcore.effective_image_uri
 }
 
 output "ecr_repository_url" {

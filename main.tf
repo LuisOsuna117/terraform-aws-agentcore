@@ -115,13 +115,16 @@ locals {
 resource "terraform_data" "validations" {
   lifecycle {
     precondition {
-      condition     = !(!var.create_build_pipeline && var.create_runtime && (var.image_uri == null || trimspace(var.image_uri) == ""))
-      error_message = "image_uri must be set and non-empty when create_runtime = true and create_build_pipeline = false."
+      condition = var.create_build_pipeline || !var.create_runtime || length(compact([
+        var.image_uri == null ? "" : "image_uri",
+        var.runtime_code_configuration == null ? "" : "runtime_code_configuration",
+      ])) == 1
+      error_message = "When create_runtime is true and create_build_pipeline is false, configure exactly one of image_uri or runtime_code_configuration."
     }
 
     precondition {
-      condition     = !(var.create_build_pipeline && var.image_uri != null)
-      error_message = "image_uri must be null when create_build_pipeline = true. Use image_tag to control the built image tag."
+      condition     = !var.create_build_pipeline || (var.image_uri == null && var.runtime_code_configuration == null)
+      error_message = "image_uri and runtime_code_configuration must be null when create_build_pipeline is true."
     }
 
     precondition {
@@ -221,16 +224,15 @@ module "runtime" {
   description        = var.description
   execution_role_arn = local.execution_role_arn
   image_uri          = local.effective_image_uri
+  code_configuration = var.runtime_code_configuration
+  filesystems        = var.runtime_filesystems
   network_mode       = var.network_mode
 
   # VPC networking (only used when network_mode = "VPC")
   vpc_security_group_ids = var.vpc_security_group_ids
   vpc_subnet_ids         = var.vpc_subnet_ids
 
-  # JWT authorizer (optional)
-  authorizer_discovery_url    = var.authorizer_discovery_url
-  authorizer_allowed_audience = var.authorizer_allowed_audience
-  authorizer_allowed_clients  = var.authorizer_allowed_clients
+  authorizer_configuration = var.runtime_authorizer_configuration
 
   # Lifecycle (optional)
   idle_runtime_session_timeout = var.idle_runtime_session_timeout
@@ -239,7 +241,8 @@ module "runtime" {
   # Protocol and headers (optional)
   server_protocol          = var.server_protocol
   request_header_allowlist = var.request_header_allowlist
-  metadata_configuration   = var.runtime_metadata_configuration
+  region                   = var.runtime_region
+  timeouts                 = var.runtime_timeouts
 
   # AWS_REGION and AWS_DEFAULT_REGION are injected automatically.
   # Callers can append additional variables via var.environment_variables.
@@ -255,6 +258,8 @@ module "runtime" {
     } : {},
     var.environment_variables,
   )
+
+  tags = local.common_tags
 
   depends_on = [
     terraform_data.validations,
