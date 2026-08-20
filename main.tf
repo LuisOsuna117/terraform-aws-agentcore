@@ -286,6 +286,9 @@ module "code_interpreter" {
 
   vpc_security_group_ids = var.code_interpreter_vpc_security_group_ids
   vpc_subnet_ids         = var.code_interpreter_vpc_subnet_ids
+  certificate_secret_arn = var.code_interpreter_certificate_secret_arn
+  region                 = var.code_interpreter_region
+  timeouts               = var.code_interpreter_timeouts
   tags                   = local.common_tags
 
   depends_on = [
@@ -304,11 +307,15 @@ module "memory" {
   count  = var.create_memory ? 1 : 0
   source = "./modules/memory"
 
-  name                      = coalesce(var.memory_name, var.name)
+  name                      = replace(coalesce(var.memory_name, var.name), "-", "_")
   event_expiry_duration     = var.memory_event_expiry_duration
   description               = var.memory_description
   encryption_key_arn        = var.memory_encryption_key_arn
   memory_execution_role_arn = var.memory_execution_role_arn
+  indexed_keys              = var.memory_indexed_keys
+  kinesis_streams           = var.memory_kinesis_streams
+  region                    = var.memory_region
+  timeouts                  = var.memory_timeouts
   tags                      = local.common_tags
 }
 

@@ -28,6 +28,7 @@ resource "aws_bedrockagentcore_evaluator" "this" {
   description    = each.value.description
   level          = each.value.level
   kms_key_arn    = each.value.kms_key_arn
+  region         = each.value.region
   tags           = local.common_tags
 
   evaluator_config {
@@ -48,11 +49,13 @@ resource "aws_bedrockagentcore_evaluator" "this" {
 
         model_config {
           bedrock_evaluator_model_config {
-            model_id = llm_as_a_judge.value.model_id
+            model_id                        = llm_as_a_judge.value.model_id
+            additional_model_request_fields = llm_as_a_judge.value.additional_model_request_fields
             inference_config {
-              max_tokens  = llm_as_a_judge.value.max_tokens
-              temperature = llm_as_a_judge.value.temperature
-              top_p       = llm_as_a_judge.value.top_p
+              max_tokens     = llm_as_a_judge.value.max_tokens
+              temperature    = llm_as_a_judge.value.temperature
+              top_p          = llm_as_a_judge.value.top_p
+              stop_sequences = llm_as_a_judge.value.stop_sequences
             }
           }
         }
@@ -65,8 +68,26 @@ resource "aws_bedrockagentcore_evaluator" "this" {
               definition = categorical.value.definition
             }
           }
+
+          dynamic "numerical" {
+            for_each = llm_as_a_judge.value.numerical
+            content {
+              label      = numerical.value.label
+              definition = numerical.value.definition
+              value      = numerical.value.value
+            }
+          }
         }
       }
+    }
+  }
+
+  dynamic "timeouts" {
+    for_each = each.value.timeouts == null ? [] : [each.value.timeouts]
+    content {
+      create = timeouts.value.create
+      update = timeouts.value.update
+      delete = timeouts.value.delete
     }
   }
 }
@@ -78,6 +99,7 @@ resource "aws_bedrockagentcore_online_evaluation_config" "this" {
   description                   = each.value.description
   evaluation_execution_role_arn = each.value.execution_role_arn
   enable_on_create              = each.value.enable_on_create
+  region                        = each.value.region
   tags                          = local.common_tags
 
   data_source_config {
@@ -98,12 +120,35 @@ resource "aws_bedrockagentcore_online_evaluation_config" "this" {
   }
 
   rule {
+    dynamic "filter" {
+      for_each = each.value.filters
+      content {
+        key      = filter.value.key
+        operator = filter.value.operator
+
+        value {
+          boolean_value = filter.value.value.boolean_value
+          double_value  = filter.value.value.double_value
+          string_value  = filter.value.value.string_value
+        }
+      }
+    }
+
     sampling_config {
       sampling_percentage = each.value.sampling_percentage
     }
 
     session_config {
       session_timeout_minutes = each.value.session_timeout_minutes
+    }
+  }
+
+  dynamic "timeouts" {
+    for_each = each.value.timeouts == null ? [] : [each.value.timeouts]
+    content {
+      create = timeouts.value.create
+      update = timeouts.value.update
+      delete = timeouts.value.delete
     }
   }
 

@@ -297,6 +297,27 @@ variable "code_interpreter_vpc_subnet_ids" {
   default     = []
 }
 
+variable "code_interpreter_certificate_secret_arn" {
+  description = "Optional Secrets Manager ARN containing the Code Interpreter certificate."
+  type        = string
+  default     = null
+}
+
+variable "code_interpreter_region" {
+  description = "AWS Region in which to manage the Code Interpreter. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "code_interpreter_timeouts" {
+  description = "Optional create and delete timeouts for the Code Interpreter."
+  type = object({
+    create = optional(string)
+    delete = optional(string)
+  })
+  default = null
+}
+
 # ==============================================================================
 # IAM — Execution Role
 # ==============================================================================
@@ -514,6 +535,43 @@ variable "memory_execution_role_arn" {
   description = "ARN of the IAM role the memory service assumes. When null, the default service role is used."
   type        = string
   default     = null
+}
+
+variable "memory_indexed_keys" {
+  description = "Opt-in Memory indexes."
+  type = list(object({
+    key  = string
+    type = string
+  }))
+  default = []
+}
+
+variable "memory_kinesis_streams" {
+  description = "Opt-in Kinesis stream delivery resources for Memory."
+  type = list(object({
+    data_stream_arn = string
+    content_configurations = optional(list(object({
+      type  = string
+      level = optional(string)
+    })), [])
+  }))
+  default = []
+}
+
+variable "memory_region" {
+  description = "AWS Region in which to manage Memory. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "memory_timeouts" {
+  description = "Optional create, update, and delete timeouts for Memory."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }
 
 # ==============================================================================
