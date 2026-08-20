@@ -48,6 +48,22 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
 - ✅ **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
 
+### Advanced services stay opt-in
+
+The root module keeps its published inputs, outputs, defaults, and resource addresses. Newer AgentCore services are exposed as focused submodules, so existing callers do not inherit a newer AWS provider or Terraform requirement unless they choose that capability.
+
+| Submodule | Capability | Minimums |
+|---|---|---|
+| [`modules/identity`](modules/identity) | Workload identities, write-only API-key/OAuth2 providers, token-vault KMS configuration | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/policy`](modules/policy) | Policy Engine, caller-owned Cedar policies, resource policies | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/managed-harness`](modules/managed-harness) | Managed Harness with explicit model, budgets, network, JWT and Memory settings | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/runtime-endpoint`](modules/runtime-endpoint) | Named Runtime Endpoint | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/memory-strategy`](modules/memory-strategy) | Built-in or custom Memory Strategy | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/gateway-target`](modules/gateway-target) | Native Runtime/MCP target with Identity and passthrough credential modes | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/gateway-rule`](modules/gateway-rule) | Static/weighted target routes and Configuration Bundle overrides | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+
 ---
 
 ## 🧱 Module structure
@@ -63,7 +79,16 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
     ├── runtime/          # aws_bedrockagentcore_agent_runtime
     ├── code-interpreter/ # aws_bedrockagentcore_code_interpreter (opt-in)
     ├── memory/           # aws_bedrockagentcore_memory (create_memory = true)
-    └── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
+    ├── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
+    ├── identity/         # Workload Identity + credential providers + token vault
+    ├── policy/           # Policy Engine + Cedar/resource policies
+    ├── browser/          # Browser + Browser Profiles
+    ├── managed-harness/  # Managed Harness
+    ├── evaluation/       # Evaluators + online evaluation configs
+    ├── runtime-endpoint/ # Runtime Endpoint
+    ├── memory-strategy/  # Memory Strategy
+    ├── gateway-target/   # Native Gateway Target
+    └── gateway-rule/     # Gateway Rule
 ```
 
 Each submodule under `modules/` can also be called independently if you only need a subset of resources.
@@ -101,6 +126,9 @@ Resources marked with a condition are only created when the corresponding flag i
 - **VPC, subnets, or security groups** — when Runtime or Code Interpreter uses `VPC` mode, you must supply the corresponding subnet and security-group inputs; the VPC and its components are out of scope for this module.
 - **Bedrock model access** — enable foundation model access separately in the AWS console.
 - **KMS keys** — S3 and ECR use AWS-managed encryption by default. Pass `gateway_kms_key_arn` or `memory_encryption_key_arn` to use customer-managed keys you manage outside of this module.
+- **GA Agent Registry resources** — the deprecated `aws_bedrockagentcore_registry` preview resource is intentionally unsupported. Registry moved to the `agent-registry` namespace on August 6, 2026; support will be added when the AWS Provider exposes a native GA resource.
+- **Observability or Optimization control-plane resources** — AgentCore emits telemetry to CloudWatch/X-Ray without a dedicated Terraform resource. Gateway Rules accept existing Configuration Bundle ARNs; this module does not invent resources the AWS Provider cannot manage.
+- **Payments** — no payment resource or x402 flow is created implicitly.
 
 ---
 
@@ -275,6 +303,15 @@ Resources marked with a condition are only created when the corresponding flag i
 | [examples/gateway-agent-runtime-target](examples/gateway-agent-runtime-target) | General Gateway with one direct AgentCore Runtime `AGENT` target. |
 | [examples/gateway-multiple-targets](examples/gateway-multiple-targets) | Standalone MCP Gateway with multiple MCP targets, including AgentCore Runtime and explicit HTTPS endpoints. |
 | [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP runtime, creates a gateway, and attaches that runtime as a gateway target. |
+| [examples/identity](examples/identity) | Workload identity and write-only API-key/OAuth2 credential providers. |
+| [examples/policy](examples/policy) | Policy Engine with caller-owned Cedar. |
+| [examples/browser](examples/browser) | Browser and Browser Profile with optional advanced controls. |
+| [examples/managed-harness](examples/managed-harness) | Managed Harness with explicit budgets and no tools by default. |
+| [examples/evaluation](examples/evaluation) | Code-based Evaluator and sampled online evaluation. |
+| [examples/runtime-endpoint](examples/runtime-endpoint) | Named endpoint for an existing Runtime. |
+| [examples/memory-strategy](examples/memory-strategy) | Semantic strategy for an existing Memory. |
+| [examples/gateway-target](examples/gateway-target) | Native Runtime target with JWT passthrough. |
+| [examples/gateway-rule](examples/gateway-rule) | Static path route for an existing Gateway. |
 
 ---
 
@@ -415,7 +452,7 @@ module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
   version = "~> 0.6"
 
-  name = "aegis-agent-gateway"
+  name = "my-agent-gateway"
 
   create_runtime        = false
   create_build_pipeline = false
@@ -459,7 +496,7 @@ module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
   version = "~> 0.5"
 
-  name = "aegis-mcp-datadog"
+  name = "my-mcp-datadog"
 
   create_runtime = true
   create_gateway = true

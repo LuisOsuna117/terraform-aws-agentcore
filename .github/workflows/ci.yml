@@ -36,7 +36,49 @@ jobs:
   # 2. Validate (root module + examples)
   # ----------------------------------------------------------------------------
   validate:
-    name: Validate
+    name: Validate (${{ matrix.path }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        path:
+          - .
+          - examples/basic
+          - examples/byo-image
+          - examples/codebuild-no-trigger
+          - examples/gateway-only
+          - examples/gateway-agent-runtime-target
+          - examples/gateway-multiple-targets
+          - examples/runtime-gateway-self-target
+          - examples/identity
+          - examples/policy
+          - examples/browser
+          - examples/managed-harness
+          - examples/evaluation
+          - examples/runtime-endpoint
+          - examples/memory-strategy
+          - examples/gateway-target
+          - examples/gateway-rule
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+
+      - name: Init
+        working-directory: ${{ matrix.path }}
+        run: tofu init -backend=false
+
+      - name: Validate
+        working-directory: ${{ matrix.path }}
+        run: tofu validate
+
+  test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -47,26 +89,40 @@ jobs:
           tofu_version: "1.11.2"
           tofu_wrapper: false
 
-      - name: Init root module
+      - name: Init
         run: tofu init -backend=false
 
-      - name: Validate root module
-        run: tofu validate
-
-      - name: Init examples/basic
-        working-directory: examples/basic
-        run: tofu init -backend=false
-
-      - name: Validate examples/basic
-        working-directory: examples/basic
-        run: tofu validate
+      - name: Run module tests
+        run: tofu test
 
   # ----------------------------------------------------------------------------
   # 3. Lint (TFLint)
   # ----------------------------------------------------------------------------
   tflint:
-    name: TFLint
+    name: TFLint (${{ matrix.path }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        path:
+          - .
+          - examples/basic
+          - examples/byo-image
+          - examples/codebuild-no-trigger
+          - examples/gateway-only
+          - examples/gateway-agent-runtime-target
+          - examples/gateway-multiple-targets
+          - examples/runtime-gateway-self-target
+          - examples/identity
+          - examples/policy
+          - examples/browser
+          - examples/managed-harness
+          - examples/evaluation
+          - examples/runtime-endpoint
+          - examples/memory-strategy
+          - examples/gateway-target
+          - examples/gateway-rule
 
     steps:
       - uses: actions/checkout@v4
@@ -78,12 +134,9 @@ jobs:
       - name: Init TFLint
         run: tflint --init
 
-      - name: Lint root module
-        run: tflint --config .tflint.hcl
-
-      - name: Lint examples/basic
-        working-directory: examples/basic
-        run: tflint --config ../../.tflint.hcl
+      - name: Lint
+        working-directory: ${{ matrix.path }}
+        run: tflint --config ${{ matrix.path == '.' && '.tflint.hcl' || '../../.tflint.hcl' }}
 
   # ----------------------------------------------------------------------------
   # 4. Security scan (Trivy)

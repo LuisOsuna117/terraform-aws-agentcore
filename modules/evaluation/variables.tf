@@ -1,0 +1,70 @@
+variable "name" {
+  description = "Base name for Evaluator and online evaluation resources."
+  type        = string
+}
+
+variable "evaluators" {
+  description = "AgentCore Evaluators. Configure exactly one of code_based or llm_judge."
+  type = map(object({
+    name        = optional(string)
+    level       = string
+    description = optional(string)
+    kms_key_arn = optional(string)
+    code_based = optional(object({
+      lambda_arn      = string
+      timeout_seconds = optional(number, 60)
+    }))
+    llm_judge = optional(object({
+      instructions = string
+      model_id     = string
+      max_tokens   = optional(number, 2048)
+      temperature  = optional(number, 0)
+      top_p        = optional(number, 1)
+      categories = list(object({
+        label      = string
+        definition = string
+      }))
+    }))
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for evaluator in values(var.evaluators) : (evaluator.code_based != null) != (evaluator.llm_judge != null)
+    ])
+    error_message = "Each evaluator must configure exactly one of code_based or llm_judge."
+  }
+}
+
+variable "online_evaluations" {
+  description = "Online evaluation configs sourcing AgentCore telemetry from CloudWatch Logs."
+  type = map(object({
+    name                    = optional(string)
+    description             = optional(string)
+    execution_role_arn      = string
+    evaluator_keys          = optional(set(string), [])
+    evaluator_ids           = optional(set(string), [])
+    log_group_names         = set(string)
+    service_names           = set(string)
+    sampling_percentage     = number
+    session_timeout_minutes = number
+    enable_on_create        = optional(bool, true)
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for config in values(var.online_evaluations) : (
+        length(config.evaluator_keys) + length(config.evaluator_ids) > 0 &&
+        config.sampling_percentage >= 0 && config.sampling_percentage <= 100
+      )
+    ])
+    error_message = "Each online evaluation requires at least one evaluator and sampling_percentage between 0 and 100."
+  }
+}
+
+variable "tags" {
+  description = "Tags to apply to evaluation resources."
+  type        = map(string)
+  default     = {}
+}
