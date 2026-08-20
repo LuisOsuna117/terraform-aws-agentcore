@@ -8,7 +8,7 @@ output "gateways" {
   value       = module.agentcore.gateways
 }
 
-output "workload_identities" {
-  description = "Created AgentCore workload identity ARNs."
-  value       = module.agentcore.workload_identities
+output "gateway_targets" {
+  description = "Created Gateway target identifiers keyed by logical name."
+  value       = module.agentcore.gateway_targets
 }

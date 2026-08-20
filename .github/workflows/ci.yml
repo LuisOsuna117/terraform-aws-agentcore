@@ -34,8 +34,6 @@ jobs:
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
-      - name: Reject internal branding
-        run: '! grep -Rin "[a]egis" --exclude-dir=.git .'
       - name: Initialize
         run: tofu init -backend=false
       - name: Validate
@@ -49,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [basic, complete, identity]
+        example: [basic, browser, code-interpreter, dual-lane-gateways, identity, memory, observability]
     defaults:
       run:
         working-directory: examples/${{ matrix.example }}

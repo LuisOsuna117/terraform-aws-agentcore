@@ -22,6 +22,42 @@ mock_provider "aws" {
   }
 }
 
+run "defaults_are_fully_opt_in" {
+  command = plan
+
+  variables {
+    name = "opt-in"
+  }
+
+  assert {
+    condition = alltrue([
+      length(output.runtimes) == 0,
+      length(output.runtime_endpoints) == 0,
+      length(output.gateways) == 0,
+      length(output.gateway_targets) == 0,
+      length(output.gateway_rules) == 0,
+      length(output.gateway_discovery_parameters) == 0,
+      length(output.workload_identities) == 0,
+      length(output.api_key_credential_providers) == 0,
+      length(output.oauth2_credential_providers) == 0,
+      length(output.policy_engines) == 0,
+      length(output.policies) == 0,
+      length(output.memories) == 0,
+      length(output.memory_strategies) == 0,
+      length(output.browsers) == 0,
+      length(output.browser_profiles) == 0,
+      length(output.code_interpreters) == 0,
+      length(output.harnesses) == 0,
+      length(output.evaluators) == 0,
+      length(output.online_evaluations) == 0,
+      length(output.registries) == 0,
+      length(output.observability_log_groups) == 0,
+      length(output.preview_stacks) == 0,
+    ])
+    error_message = "Providing only the module name must create no opt-in features."
+  }
+}
+
 run "minimal_runtime_uses_module_name" {
   command = plan
 

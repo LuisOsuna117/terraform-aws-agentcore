@@ -38,23 +38,11 @@ module "agentcore" {
         allowed_clients     = [var.jwt_client_id]
         allowed_gateway_key = "human"
       }
-      memory_id_environment = {
-        AGENTCORE_MEMORY_ID = "conversation"
-      }
     }
     automation = {
       role_arn       = var.automation_runtime_role_arn
       image_uri      = var.image_uri
       authentication = "AWS_IAM"
-      browser_id_environment = {
-        AGENTCORE_BROWSER_ID = "readonly"
-      }
-      browser_profile_id_environment = {
-        AGENTCORE_BROWSER_PROFILE_ID = "readonly"
-      }
-      code_interpreter_id_environment = {
-        AGENTCORE_CODE_INTERPRETER_ID = "isolated"
-      }
     }
   }
 
@@ -70,34 +58,6 @@ module "agentcore" {
       target_type     = "HTTP_RUNTIME"
       runtime_key     = "automation"
       credential_mode = "GATEWAY_IAM_ROLE"
-    }
-  }
-
-  workload_identities = {
-    outbound = {}
-  }
-
-  memories = {
-    conversation = {
-      event_expiry_duration = 30
-    }
-  }
-
-  browsers = {
-    readonly = {}
-  }
-
-  browser_profiles = {
-    readonly = {}
-  }
-
-  code_interpreters = {
-    isolated = {}
-  }
-
-  observability = {
-    usage = {
-      log_group_name = "/aws/bedrock-agentcore/${var.name}/usage"
     }
   }
 

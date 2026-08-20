@@ -1,7 +1,7 @@
 variable "name" {
   description = "Name prefix for the example resources."
   type        = string
-  default     = "agentcore-complete"
+  default     = "agentcore-dual-lane"
 }
 
 variable "region" {
@@ -11,7 +11,7 @@ variable "region" {
 }
 
 variable "image_uri" {
-  description = "Immutable ARM64 container image URI shared by both runtimes."
+  description = "Immutable ARM64 container image URI shared by both Runtimes."
   type        = string
 }
 

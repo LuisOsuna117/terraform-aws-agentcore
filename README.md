@@ -13,6 +13,9 @@ OpenTofu.
 
 ## Features
 
+Every capability is opt-in. All resource maps default to `{}`, so providing
+only `name` creates no resources.
+
 - Runtime and immutable Runtime endpoints with `AWS_IAM` or `CUSTOM_JWT` authentication.
 - Gateway targets, path rules, JWT passthrough, IAM credentials, and Policy Engine `ENFORCE` mode.
 - AgentCore Identity workload identities and write-only API key and OAuth2 credential providers.
@@ -52,15 +55,20 @@ not build application containers or attach broad managed policies.
 ## Examples
 
 - [Basic Runtime](examples/basic): one IAM-authenticated Runtime.
-- [Complete governed topology](examples/complete): separate JWT and IAM lanes with Policy, Identity, Memory, Browser, Code Interpreter, and observability.
+- [Dual-lane Gateways](examples/dual-lane-gateways): separate JWT and IAM Gateway-to-Runtime paths with Policy enforcement.
 - [AgentCore Identity](examples/identity): workload identity and write-only OAuth2 credentials.
+- [Memory](examples/memory): one Memory and semantic strategy.
+- [Browser](examples/browser): one Browser and reusable Browser Profile.
+- [Code Interpreter](examples/code-interpreter): one no-network sandbox.
+- [Observability](examples/observability): one retained telemetry log group.
 
 ## Design
 
-The root module is the primary, opinionated entrypoint. Related resources use
-maps so callers can create one or many instances without repeated module
-blocks. A map item's `name` is optional and defaults to the root `name` plus its
-key. Set `create = false` to make the entire module a no-op.
+The root module is the primary, opinionated entrypoint. Features are enabled by
+adding entries only to their corresponding maps; there are no implicit feature
+bundles or duplicated `enable_*` flags. A map item's `name` is optional and
+defaults to the root `name` plus its key. Set `create = false` to make the
+entire module a no-op.
 
 The two nested modules are intentionally isolated provider-gap boundaries:
 
