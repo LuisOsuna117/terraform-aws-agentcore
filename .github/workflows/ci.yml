@@ -13,28 +13,129 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PODMAN_COMPOSE_PROVIDER: podman-compose
-
 jobs:
-  compose:
-    name: Podman / ${{ matrix.service }}
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+      - run: tofu fmt -check -recursive -diff
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+      - name: Reject internal branding
+        run: '! grep -Rin "[a]egis" --exclude-dir=.git .'
+      - name: Initialize
+        run: tofu init -backend=false
+      - name: Validate
+        run: tofu validate
+      - name: Run module tests
+        run: tofu test
+
+  examples:
+    name: Example / ${{ matrix.example }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [format, test, lint, docs-check, security, release-notes]
-
+        example: [basic, complete, identity]
+    defaults:
+      run:
+        working-directory: examples/${{ matrix.example }}
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.11.2"
+          tofu_wrapper: false
+      - run: tofu init -backend=false
+      - run: tofu validate
 
-      - name: Install Podman Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes podman podman-compose
+  lint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.64.0
+      - run: tflint --init
+      - run: tflint --config .tflint.hcl
 
-      - name: Validate Compose configuration
-        run: podman compose config
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: terraform-docs/gh-actions@v1
+        with:
+          working-dir: .
+          output-file: README.md
+          output-method: inject
+          git-push: "false"
+          fail-on-diff: "true"
+          args: --lockfile=false
 
-      - name: Run ${{ matrix.service }}
-        run: podman compose run --rm ${{ matrix.service }}
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan IaC
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_SKIP_CHECK_UPDATE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          format: table
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore
+      - name: Create SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_SKIP_CHECK_UPDATE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-results.sarif
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  release-notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-save @semantic-release/release-notes-generator@14.1.1 conventional-changelog-conventionalcommits@9.3.1
+      - run: node scripts/verify-release-notes.mjs

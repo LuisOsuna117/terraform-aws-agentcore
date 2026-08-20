@@ -93,18 +93,19 @@ module outputs.
 
 ## Development
 
-All module development and validation runs through Podman Compose:
+Install the repository's pre-commit hooks, then use the standard OpenTofu
+workflow:
 
 ```bash
-podman compose run --rm format
-podman compose run --rm test
-podman compose run --rm lint
-podman compose run --rm security
-podman compose run --rm docs
+pre-commit install
+pre-commit run --all-files
+tofu init -backend=false
+tofu validate
+tofu test
 ```
 
-The `docs` command updates the generated requirements, providers, resources,
-inputs, and outputs section below.
+CI also validates every example, runs TFLint and Trivy, checks generated
+terraform-docs output, and verifies release-note rendering.
 
 ## Contributing
 
