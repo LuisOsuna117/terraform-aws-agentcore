@@ -476,25 +476,97 @@ variable "gateway_role_arn" {
   default     = null
 }
 
+variable "gateway_role_policy_arns" {
+  description = "Managed policy ARNs to attach to the module-created Gateway role."
+  type        = set(string)
+  default     = []
+}
+
+variable "gateway_role_policy_statements" {
+  description = "Additional least-privilege IAM statements for the module-created Gateway role."
+  type = list(object({
+    sid       = optional(string)
+    effect    = optional(string, "Allow")
+    actions   = set(string)
+    resources = set(string)
+    condition = optional(any)
+  }))
+  default = []
+}
+
 variable "gateway_authorizer_type" {
-  description = "Gateway request authorizer type. \"CUSTOM_JWT\" requires gateway_authorizer_configuration. \"AWS_IAM\" uses SigV4."
+  description = "Gateway inbound authorizer: CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE."
   type        = string
   default     = "AWS_IAM"
 
   validation {
-    condition     = contains(["CUSTOM_JWT", "AWS_IAM"], var.gateway_authorizer_type)
-    error_message = "gateway_authorizer_type must be either \"CUSTOM_JWT\" or \"AWS_IAM\"."
+    condition     = contains(["CUSTOM_JWT", "AWS_IAM", "AUTHENTICATE_ONLY", "NONE"], var.gateway_authorizer_type)
+    error_message = "gateway_authorizer_type must be CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE."
   }
 }
 
 variable "gateway_authorizer_configuration" {
-  description = "JWT authorizer configuration. Required when gateway_authorizer_type = \"CUSTOM_JWT\". Shape: { discovery_url, allowed_audience, allowed_clients }."
+  description = "Advanced JWT authorizer configuration. Required only when gateway_authorizer_type is CUSTOM_JWT."
   type = object({
-    discovery_url    = string
-    allowed_audience = optional(list(string), [])
-    allowed_clients  = optional(list(string), [])
+    discovery_url            = string
+    allowed_audience         = optional(set(string), [])
+    allowed_clients          = optional(set(string), [])
+    allowed_scopes           = optional(set(string), [])
+    workload_identities      = optional(list(string), [])
+    hosting_environment_arns = optional(list(string), [])
+    custom_claims = optional(set(object({
+      inbound_token_claim_name       = string
+      inbound_token_claim_value_type = string
+      claim_match_operator           = string
+      match_value_string             = optional(string)
+      match_value_string_list        = optional(set(string))
+    })), [])
+    private_endpoint = optional(object({
+      managed_vpc_resource = optional(object({
+        endpoint_ip_address_type = string
+        subnet_ids               = set(string)
+        vpc_identifier           = string
+        routing_domain           = optional(string)
+        security_group_ids       = optional(set(string), [])
+        tags                     = optional(map(string), {})
+      }))
+      self_managed_lattice_resource = optional(object({
+        resource_configuration_identifier = string
+      }))
+    }))
+    private_endpoint_overrides = optional(list(object({
+      domain = string
+      private_endpoint = object({
+        managed_vpc_resource = optional(object({
+          endpoint_ip_address_type = string
+          subnet_ids               = set(string)
+          vpc_identifier           = string
+          routing_domain           = optional(string)
+          security_group_ids       = optional(set(string), [])
+          tags                     = optional(map(string), {})
+        }))
+        self_managed_lattice_resource = optional(object({
+          resource_configuration_identifier = string
+        }))
+      })
+    })), [])
   })
   default = null
+
+  validation {
+    condition = var.gateway_authorizer_configuration == null || alltrue([
+      for claim in var.gateway_authorizer_configuration.custom_claims : (
+        contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
+        contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
+        ((claim.match_value_string != null) != (claim.match_value_string_list != null)) &&
+        (claim.claim_match_operator != "EQUALS" || claim.inbound_token_claim_value_type == "STRING") &&
+        (!contains(["CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) || claim.inbound_token_claim_value_type == "STRING_ARRAY") &&
+        (claim.claim_match_operator != "CONTAINS_ANY" || claim.match_value_string_list != null) &&
+        (claim.claim_match_operator == "CONTAINS_ANY" || claim.match_value_string != null)
+      )
+    ])
+    error_message = "Each Gateway JWT custom claim must use a compatible value type, operator, and exactly one match value shape."
+  }
 }
 
 variable "gateway_protocol_type" {
@@ -509,13 +581,29 @@ variable "gateway_protocol_type" {
 }
 
 variable "gateway_protocol_configuration" {
-  description = "MCP protocol configuration. Shape: { instructions, search_type, supported_versions }."
+  description = "Optional MCP protocol instructions, versions, session timeout, and response streaming configuration."
   type = object({
-    instructions       = optional(string)
-    search_type        = optional(string)
-    supported_versions = optional(list(string), [])
+    instructions               = optional(string)
+    search_type                = optional(string)
+    supported_versions         = optional(set(string), [])
+    session_timeout_in_seconds = optional(number)
+    enable_response_streaming  = optional(bool)
   })
   default = null
+}
+
+variable "gateway_policy_engine_configuration" {
+  description = "Optional Policy Engine association for the Gateway."
+  type = object({
+    arn  = string
+    mode = string
+  })
+  default = null
+
+  validation {
+    condition     = var.gateway_policy_engine_configuration == null || contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_configuration.mode)
+    error_message = "gateway_policy_engine_configuration.mode must be LOG_ONLY or ENFORCE."
+  }
 }
 
 variable "gateway_interceptor_configurations" {
@@ -596,12 +684,28 @@ variable "gateway_kms_key_arn" {
 }
 
 variable "gateway_exception_level" {
-  description = "Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR."
+  description = "Exception detail level exposed via the Gateway. AgentCore currently accepts only DEBUG."
   type        = string
   default     = null
 
   validation {
-    condition     = var.gateway_exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.gateway_exception_level)
-    error_message = "gateway_exception_level must be one of INFO, WARN, or ERROR."
+    condition     = var.gateway_exception_level == null ? true : var.gateway_exception_level == "DEBUG"
+    error_message = "gateway_exception_level must be DEBUG or null."
   }
+}
+
+variable "gateway_region" {
+  description = "AWS Region in which to manage the Gateway. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "gateway_timeouts" {
+  description = "Optional create, update, and delete timeouts for the Gateway."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }

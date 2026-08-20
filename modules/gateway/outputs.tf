@@ -50,6 +50,6 @@ output "role_arn" {
 }
 
 output "role_name" {
-  description = "Name of the module-created gateway IAM role. Empty string when create_role = false."
-  value       = var.create_role ? aws_iam_role.gateway[0].name : ""
+  description = "Name of the module-created Gateway IAM role. Null when create_role is false."
+  value       = var.create_role ? aws_iam_role.gateway[0].name : null
 }

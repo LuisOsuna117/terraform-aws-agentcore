@@ -41,7 +41,7 @@ variable "target_configuration" {
           tool_override = optional(set(object({
             path        = string
             method      = string
-            name        = optional(string)
+            name        = string
             description = optional(string)
           })), [])
         })

@@ -315,20 +315,25 @@ module "gateway" {
   count  = var.create_gateway ? 1 : 0
   source = "./modules/gateway"
 
-  name                       = coalesce(var.gateway_name, var.name)
-  description                = var.gateway_description
-  create_role                = var.gateway_create_role
-  role_arn                   = var.gateway_role_arn
-  authorizer_type            = var.gateway_authorizer_type
-  authorizer_configuration   = var.gateway_authorizer_configuration
-  protocol_type              = var.gateway_protocol_type
-  protocol_configuration     = var.gateway_protocol_configuration
-  interceptor_configurations = var.gateway_interceptor_configurations
-  targets                    = local.effective_gateway_targets
-  runtime_invoke_arns        = local.effective_gateway_runtime_invoke_arns
-  kms_key_arn                = var.gateway_kms_key_arn
-  exception_level            = var.gateway_exception_level
-  tags                       = local.common_tags
+  name                        = coalesce(var.gateway_name, var.name)
+  description                 = var.gateway_description
+  create_role                 = var.gateway_create_role
+  role_arn                    = var.gateway_role_arn
+  role_policy_arns            = var.gateway_role_policy_arns
+  role_policy_statements      = var.gateway_role_policy_statements
+  authorizer_type             = var.gateway_authorizer_type
+  authorizer_configuration    = var.gateway_authorizer_configuration
+  protocol_type               = var.gateway_protocol_type
+  protocol_configuration      = var.gateway_protocol_configuration
+  policy_engine_configuration = var.gateway_policy_engine_configuration
+  interceptor_configurations  = var.gateway_interceptor_configurations
+  targets                     = local.effective_gateway_targets
+  runtime_invoke_arns         = local.effective_gateway_runtime_invoke_arns
+  kms_key_arn                 = var.gateway_kms_key_arn
+  exception_level             = var.gateway_exception_level
+  region                      = var.gateway_region
+  timeouts                    = var.gateway_timeouts
+  tags                        = local.common_tags
 }
 
 # ==============================================================================

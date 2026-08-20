@@ -149,7 +149,7 @@ run "jwt_passthrough_does_not_grant_runtime_invoke_to_gateway_role" {
   }
 
   assert {
-    condition     = length(aws_iam_role_policy.gateway_invoke_agent_runtime) == 0
+    condition     = length(aws_iam_role_policy.gateway_permissions) == 0
     error_message = "JWT passthrough targets must not grant Runtime invoke permission to the Gateway IAM role."
   }
 }

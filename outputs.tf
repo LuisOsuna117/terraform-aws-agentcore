@@ -91,8 +91,8 @@ output "execution_role_arn" {
 }
 
 output "execution_role_name" {
-  description = "Name of the module-created execution role. Empty string when create_execution_role = false."
-  value       = var.create_execution_role ? aws_iam_role.agent_execution[0].name : ""
+  description = "Name of the module-created execution role. Null when create_execution_role is false."
+  value       = var.create_execution_role ? aws_iam_role.agent_execution[0].name : null
 }
 
 output "codebuild_role_arn" {

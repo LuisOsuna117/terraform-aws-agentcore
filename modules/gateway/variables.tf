@@ -34,18 +34,36 @@ variable "role_arn" {
   }
 }
 
+variable "role_policy_arns" {
+  description = "Managed policy ARNs to attach to the module-created Gateway role. Ignored when create_role is false."
+  type        = set(string)
+  default     = []
+}
+
+variable "role_policy_statements" {
+  description = "Additional least-privilege IAM statements for the module-created Gateway role, for example Smithy services or credential providers."
+  type = list(object({
+    sid       = optional(string)
+    effect    = optional(string, "Allow")
+    actions   = set(string)
+    resources = set(string)
+    condition = optional(any)
+  }))
+  default = []
+}
+
 # ==============================================================================
 # Authorizer
 # ==============================================================================
 
 variable "authorizer_type" {
-  description = "Type of request authorizer. \"CUSTOM_JWT\" requires authorizer_configuration. \"AWS_IAM\" uses AWS Signature Version 4."
+  description = "Inbound authorizer: CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE. Offloaded authorization modes must be protected by a Policy Engine or downstream authorization."
   type        = string
   default     = "AWS_IAM"
 
   validation {
-    condition     = contains(["CUSTOM_JWT", "AWS_IAM"], var.authorizer_type)
-    error_message = "authorizer_type must be either \"CUSTOM_JWT\" or \"AWS_IAM\"."
+    condition     = contains(["CUSTOM_JWT", "AWS_IAM", "AUTHENTICATE_ONLY", "NONE"], var.authorizer_type)
+    error_message = "authorizer_type must be CUSTOM_JWT, AWS_IAM, AUTHENTICATE_ONLY, or NONE."
   }
 }
 
@@ -54,17 +72,95 @@ variable "authorizer_configuration" {
     JWT authorizer configuration. Required when authorizer_type = "CUSTOM_JWT".
     Shape:
       {
-        discovery_url    = string                    # OIDC discovery URL (must end with /.well-known/openid-configuration)
-        allowed_audience = optional(list(string))   # Allowed JWT audience values
-        allowed_clients  = optional(list(string))   # Allowed JWT client IDs
+        discovery_url            = string
+        allowed_audience         = optional(set(string))
+        allowed_clients          = optional(set(string))
+        allowed_scopes           = optional(set(string))
+        workload_identities      = optional(list(string))
+        hosting_environment_arns = optional(list(string))
+        custom_claims            = optional(set(object(...)))
+        private_endpoint         = optional(object(...))
+        private_endpoint_overrides = optional(list(object(...)))
       }
   EOT
   type = object({
-    discovery_url    = string
-    allowed_audience = optional(list(string), [])
-    allowed_clients  = optional(list(string), [])
+    discovery_url            = string
+    allowed_audience         = optional(set(string), [])
+    allowed_clients          = optional(set(string), [])
+    allowed_scopes           = optional(set(string), [])
+    workload_identities      = optional(list(string), [])
+    hosting_environment_arns = optional(list(string), [])
+    custom_claims = optional(set(object({
+      inbound_token_claim_name       = string
+      inbound_token_claim_value_type = string
+      claim_match_operator           = string
+      match_value_string             = optional(string)
+      match_value_string_list        = optional(set(string))
+    })), [])
+    private_endpoint = optional(object({
+      managed_vpc_resource = optional(object({
+        endpoint_ip_address_type = string
+        subnet_ids               = set(string)
+        vpc_identifier           = string
+        routing_domain           = optional(string)
+        security_group_ids       = optional(set(string), [])
+        tags                     = optional(map(string), {})
+      }))
+      self_managed_lattice_resource = optional(object({
+        resource_configuration_identifier = string
+      }))
+    }))
+    private_endpoint_overrides = optional(list(object({
+      domain = string
+      private_endpoint = object({
+        managed_vpc_resource = optional(object({
+          endpoint_ip_address_type = string
+          subnet_ids               = set(string)
+          vpc_identifier           = string
+          routing_domain           = optional(string)
+          security_group_ids       = optional(set(string), [])
+          tags                     = optional(map(string), {})
+        }))
+        self_managed_lattice_resource = optional(object({
+          resource_configuration_identifier = string
+        }))
+      })
+    })), [])
   })
   default = null
+
+  validation {
+    condition = var.authorizer_configuration == null || alltrue([
+      for claim in var.authorizer_configuration.custom_claims : (
+        contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
+        contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
+        ((claim.match_value_string != null) != (claim.match_value_string_list != null)) &&
+        (claim.claim_match_operator != "EQUALS" || claim.inbound_token_claim_value_type == "STRING") &&
+        (!contains(["CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) || claim.inbound_token_claim_value_type == "STRING_ARRAY") &&
+        (claim.claim_match_operator != "CONTAINS_ANY" || claim.match_value_string_list != null) &&
+        (claim.claim_match_operator == "CONTAINS_ANY" || claim.match_value_string != null)
+      )
+    ])
+    error_message = "Each JWT custom claim must use a compatible value type, operator, and exactly one match value shape."
+  }
+
+  validation {
+    condition = var.authorizer_configuration == null || var.authorizer_configuration.private_endpoint == null || (
+      (var.authorizer_configuration.private_endpoint.managed_vpc_resource != null) !=
+      (var.authorizer_configuration.private_endpoint.self_managed_lattice_resource != null)
+    )
+    error_message = "authorizer_configuration.private_endpoint must configure exactly one managed or self-managed VPC resource."
+  }
+
+  validation {
+    condition = var.authorizer_configuration == null || alltrue([
+      for override in var.authorizer_configuration.private_endpoint_overrides : (
+        (override.private_endpoint.managed_vpc_resource != null) !=
+        (override.private_endpoint.self_managed_lattice_resource != null)
+      )
+    ])
+    error_message = "Each JWT private endpoint override must configure exactly one managed or self-managed VPC resource."
+  }
 }
 
 # ==============================================================================
@@ -93,11 +189,27 @@ variable "protocol_configuration" {
       }
   EOT
   type = object({
-    instructions       = optional(string)
-    search_type        = optional(string)
-    supported_versions = optional(list(string), [])
+    instructions               = optional(string)
+    search_type                = optional(string)
+    supported_versions         = optional(set(string), [])
+    session_timeout_in_seconds = optional(number)
+    enable_response_streaming  = optional(bool)
   })
   default = null
+}
+
+variable "policy_engine_configuration" {
+  description = "Optional Policy Engine association for Gateway authorization."
+  type = object({
+    arn  = string
+    mode = string
+  })
+  default = null
+
+  validation {
+    condition     = var.policy_engine_configuration == null || contains(["LOG_ONLY", "ENFORCE"], var.policy_engine_configuration.mode)
+    error_message = "policy_engine_configuration.mode must be LOG_ONLY or ENFORCE."
+  }
 }
 
 # ==============================================================================
@@ -175,6 +287,22 @@ variable "exception_level" {
     condition     = var.exception_level == null ? true : var.exception_level == "DEBUG"
     error_message = "exception_level must be DEBUG or null."
   }
+}
+
+variable "region" {
+  description = "AWS Region in which to manage the Gateway. Defaults to the provider Region."
+  type        = string
+  default     = null
+}
+
+variable "timeouts" {
+  description = "Optional create, update, and delete timeouts for the Gateway."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }
 
 # ==============================================================================
