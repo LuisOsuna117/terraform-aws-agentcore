@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.8.0...v1.0.0) (2026-08-20)
+
+### ⚠ BREAKING CHANGES
+
+* align v1 examples and release gates
+* make build and IAM features opt-in
+* gateway_targets now uses target_configuration; gateway_mcp_targets and the legacy target outputs are removed, and AWS Provider 6.61 is required.
+* restore community module DX
+* v0 variables, nested modules, build automation, examples, aliases, and compatibility paths are removed.
+
+### 🚀 Features
+
+* add opt-in AgentCore service modules ([8fa0a1e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/8fa0a1ec296a5e2bce8b1a1d1d0828366305dc4b))
+* **agentcore:** complete managed service options ([a042d62](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/a042d62ec6fbb3f4fbf9a3b99b21ea0978f65e91))
+* **build:** restore opt-in image pipeline ([00f63b2](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/00f63b26dde0e856a94f9ca59f737bc1dddaca96))
+* **gateway:** expose governed gateway surface ([bbd6053](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/bbd60535d1900cc3b9ee03e91c1854a364d94914))
+* generalize AgentCore gateway targets ([eaf3536](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/eaf3536e4ddacb61ca64e69f1f89302d6b47aa2f))
+* rebuild AgentCore module v1 ([92d9643](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/92d9643d6a7a90497fcead06b06a4a64d7369717))
+* **runtime:** expose native runtime artifacts ([1b84971](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/1b8497171751bdc4283318570e2a3ad0713b9173))
+
+### 🐛 Bug Fixes
+
+* **ci:** select podman compose provider ([7ec845b](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/7ec845b221dcf9e0d746b4463b68bccffec48b1e))
+* **gateway:** align rule contracts with provider ([0a8beea](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/0a8beeab95f83f13050f576126e9a21233c6be27))
+* make build and IAM features opt-in ([f59f2d5](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/f59f2d5ec5c051206d439b04feb841411c17db25))
+* restore community module DX ([0591421](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/0591421c609e2db6fcd8bcbb8501ecf9f885d009))
+* restore published module contract ([20dde74](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/20dde743e869b7717a0db321372b966aec43b373))
+* verify Terraform and OpenTofu parity ([62b74e7](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/62b74e7b8f07be0ee6ca58fa0988524c0ae825d3))
+
+### 📖 Documentation
+
+* add v1 AWS smoke criteria ([f55ebb2](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/f55ebb22657bb0c32dbed9292484468e7f40b087))
+* align v1 examples and release gates ([bc6b91e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/bc6b91e15ae1ee3a11b409607515fc84d822a5ee))
+* complete the v1 upgrade contract ([8bc6624](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/8bc6624a0a426d28be8cac90b8340390fbdeb2e2))
+* **examples:** separate opt-in capabilities ([7b77fa5](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/7b77fa55f7e809f56c6dd01a474d5070fbc19606))
+
+### 🔧 Code Refactoring
+
+* **ci:** use standard module workflow ([395e61c](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/395e61c70600f2b5267f62d5001707c2439e07bc))
+
 ## [0.8.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.7.0...v0.8.0) (2026-07-15)
 
 ### 🚀 Features
