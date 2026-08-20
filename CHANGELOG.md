@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.0 (2026-08-18)
+
+- Replace the v0 interface with typed, multi-resource AgentCore maps.
+- Add native dual JWT/IAM runtime and gateway lanes, JWT passthrough, Gateway rules, Cedar `ENFORCE`, resource policies, Identity, Memory, Browser, Code Interpreter, Harness, Evaluations, and observability.
+- Implement Registry Preview against the current `agent-registry` namespace through one isolated CloudFormation lifecycle adapter; the deprecated provider resource is not supported.
+- Remove build automation, broad IAM defaults, aliases, CLI mutations, compatibility resources, and v0 examples.
+- Require OpenTofu/Terraform 1.11 and AWS provider 6.60.
+
 ## [0.8.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.7.0...v0.8.0) (2026-07-15)
 
 ### 🚀 Features
