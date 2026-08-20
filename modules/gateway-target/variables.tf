@@ -198,7 +198,7 @@ variable "metadata_configuration" {
   default = null
 
   validation {
-    condition = var.metadata_configuration == null || alltrue([
+    condition = var.metadata_configuration == null ? true : alltrue([
       length(var.metadata_configuration.allowed_query_parameters) <= 10,
       length(var.metadata_configuration.allowed_request_headers) <= 10,
       length(var.metadata_configuration.allowed_response_headers) <= 10,

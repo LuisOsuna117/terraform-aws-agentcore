@@ -50,7 +50,7 @@ variable "evaluators" {
 
   validation {
     condition = alltrue([
-      for evaluator in values(var.evaluators) : evaluator.llm_judge == null || (
+      for evaluator in values(var.evaluators) : evaluator.llm_judge == null ? true : (
         (length(evaluator.llm_judge.categories) > 0) != (length(evaluator.llm_judge.numerical) > 0)
       )
     ])

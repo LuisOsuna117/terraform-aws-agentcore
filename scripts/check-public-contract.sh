@@ -17,7 +17,7 @@ while IFS= read -r example; do
   fi
 done < <(git ls-files 'examples/*/main.tf' | xargs -n1 dirname | sort -u)
 
-if git grep -En 'actions/(checkout|setup-node)@v[1-6]|github/codeql-action/[^@]+@v[1-3]' -- .github/workflows; then
+if git grep -En 'actions/(checkout|setup-node)@v[1-6]|github/codeql-action/[^@]+@v[1-3]|hashicorp/setup-terraform@v[1-3]' -- .github/workflows; then
   echo "Found a GitHub action generation that does not run on Node.js 24." >&2
   exit 1
 fi

@@ -39,12 +39,12 @@ locals {
 
   mcp_targets = {
     for key, target in var.targets : key => target
-    if try(target.target_configuration.mcp, null) != null
+    if contains(try(keys(target.target_configuration), []), "mcp")
   }
 
   http_targets = {
     for key, target in var.targets : key => target
-    if try(target.target_configuration.http, null) != null
+    if contains(try(keys(target.target_configuration), []), "http")
   }
 
   effective_protocol_type = var.protocol_type != null ? var.protocol_type : (length(local.mcp_targets) > 0 ? "MCP" : null)
@@ -62,7 +62,7 @@ locals {
     if try(target.credential_provider_configuration.gateway_iam_role, null) != null
   ])
 
-  runtime_invoke_arns = setunion(var.runtime_invoke_arns, local.inferred_runtime_invoke_arns)
+  runtime_invoke_arns = setunion(toset(var.runtime_invoke_arns), local.inferred_runtime_invoke_arns)
   runtime_invoke_resources = toset(flatten([
     for arn in local.runtime_invoke_arns : [
       arn,
@@ -100,35 +100,61 @@ locals {
     for uri in local.s3_schema_uris : "arn:${data.aws_partition.current.partition}:s3:::${trimprefix(uri, "s3://")}"
   ])
 
+  has_runtime_invoke_permissions = length(var.runtime_invoke_arns) > 0 || anytrue([
+    for target in values(local.http_targets) : contains(try(keys(target.credential_provider_configuration), []), "gateway_iam_role")
+  ])
+  has_lambda_invoke_permissions = length(var.interceptor_configurations) > 0 || anytrue([
+    for target in values(local.mcp_targets) : contains(try(keys(target.target_configuration.mcp), []), "lambda")
+  ])
+  has_api_gateway_invoke_permissions = anytrue([
+    for target in values(local.mcp_targets) : contains(try(keys(target.target_configuration.mcp), []), "api_gateway")
+  ])
+  has_s3_schema_permissions = anytrue(flatten([
+    for target in values(local.mcp_targets) : [
+      contains(try(keys(target.target_configuration.mcp.lambda.tool_schema), []), "s3"),
+      contains(try(keys(target.target_configuration.mcp.mcp_server.mcp_tool_schema), []), "s3"),
+      contains(try(keys(target.target_configuration.mcp.open_api_schema), []), "s3"),
+      contains(try(keys(target.target_configuration.mcp.smithy_model), []), "s3"),
+    ]
+  ]))
+  has_effective_role_policy_statements = (
+    local.has_runtime_invoke_permissions ||
+    local.has_lambda_invoke_permissions ||
+    local.has_api_gateway_invoke_permissions ||
+    local.has_s3_schema_permissions ||
+    var.policy_engine_configuration != null ||
+    length(var.role_policy_statements) > 0
+  )
+
   inferred_role_policy_statements = concat(
-    length(local.runtime_invoke_resources) == 0 ? [] : [{
+    local.has_runtime_invoke_permissions ? [{
       sid       = "InvokeAgentCoreRuntimeTargets"
       effect    = "Allow"
       actions   = toset(["bedrock-agentcore:InvokeAgentRuntime"])
       resources = local.runtime_invoke_resources
       condition = null
-    }],
-    length(local.lambda_invoke_arns) == 0 ? [] : [{
+    }] : [],
+    local.has_lambda_invoke_permissions ? [{
       sid       = "InvokeLambdaTargets"
       effect    = "Allow"
       actions   = toset(["lambda:InvokeFunction"])
       resources = local.lambda_invoke_arns
       condition = null
-    }],
-    length(local.api_gateway_invoke_arns) == 0 ? [] : [{
+    }] : [],
+    local.has_api_gateway_invoke_permissions ? [{
       sid       = "InvokeApiGatewayTargets"
       effect    = "Allow"
       actions   = toset(["execute-api:Invoke"])
       resources = local.api_gateway_invoke_arns
       condition = null
-    }],
-    length(local.s3_schema_arns) == 0 ? [] : [{
+    }] : [],
+    local.has_s3_schema_permissions ? [{
       sid       = "ReadGatewayToolSchemas"
       effect    = "Allow"
       actions   = toset(["s3:GetObject"])
       resources = local.s3_schema_arns
       condition = null
-    }],
+    }] : [],
     var.policy_engine_configuration == null ? [] : [{
       sid     = "UseAgentCorePolicyEngine"
       effect  = "Allow"
@@ -360,7 +386,7 @@ resource "aws_bedrockagentcore_gateway" "this" {
 }
 
 resource "aws_iam_role_policy" "gateway_permissions" {
-  count = var.create_role && length(local.effective_role_policy_statements) > 0 ? 1 : 0
+  count = var.create_role && local.has_effective_role_policy_statements ? 1 : 0
 
   name = "${var.name}-gateway-permissions"
   role = local.role_name
@@ -391,7 +417,7 @@ resource "aws_iam_role_policy_attachment" "gateway" {
 }
 
 resource "time_sleep" "gateway_role_policy_propagation" {
-  count = var.create_role && (length(local.effective_role_policy_statements) > 0 || length(var.role_policy_arns) > 0) ? 1 : 0
+  count = var.create_role && (local.has_effective_role_policy_statements || length(var.role_policy_arns) > 0) ? 1 : 0
 
   create_duration = "45s"
 

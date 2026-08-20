@@ -40,7 +40,7 @@ variable "ecr_lifecycle_keep_count" {
   default     = null
 
   validation {
-    condition     = var.ecr_lifecycle_keep_count == null || var.ecr_lifecycle_keep_count >= 1
+    condition     = var.ecr_lifecycle_keep_count == null ? true : var.ecr_lifecycle_keep_count >= 1
     error_message = "ecr_lifecycle_keep_count must be null or at least 1."
   }
 }

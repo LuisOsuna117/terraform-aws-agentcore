@@ -105,6 +105,33 @@ jobs:
       - name: Run module tests
         run: tofu test
 
+  terraform-compat:
+    name: Terraform 1.11 compatibility
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.11.4"
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Validate and test root module
+        run: |
+          terraform init -backend=false
+          terraform validate
+          terraform test
+
+      - name: Validate native Gateway Target example
+        working-directory: examples/gateway-target
+        run: |
+          terraform init -backend=false
+          terraform validate
+
   # ----------------------------------------------------------------------------
   # 3. Lint (TFLint)
   # ----------------------------------------------------------------------------

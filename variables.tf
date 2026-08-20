@@ -412,7 +412,7 @@ variable "ecr_lifecycle_keep_count" {
   default     = null
 
   validation {
-    condition     = var.ecr_lifecycle_keep_count == null || var.ecr_lifecycle_keep_count >= 1
+    condition     = var.ecr_lifecycle_keep_count == null ? true : var.ecr_lifecycle_keep_count >= 1
     error_message = "ecr_lifecycle_keep_count must be null or at least 1."
   }
 }
@@ -691,7 +691,7 @@ variable "gateway_authorizer_configuration" {
   default = null
 
   validation {
-    condition = var.gateway_authorizer_configuration == null || alltrue([
+    condition = var.gateway_authorizer_configuration == null ? true : alltrue([
       for claim in var.gateway_authorizer_configuration.custom_claims : (
         contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
         contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
@@ -738,7 +738,7 @@ variable "gateway_policy_engine_configuration" {
   default = null
 
   validation {
-    condition     = var.gateway_policy_engine_configuration == null || contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_configuration.mode)
+    condition     = var.gateway_policy_engine_configuration == null ? true : contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_configuration.mode)
     error_message = "gateway_policy_engine_configuration.mode must be LOG_ONLY or ENFORCE."
   }
 }
@@ -768,7 +768,7 @@ variable "gateway_targets" {
 
 variable "gateway_runtime_invoke_arns" {
   description = "Additional AgentCore Runtime ARNs the module-created Gateway role may invoke. HTTP Runtime target ARNs are inferred automatically."
-  type        = set(string)
+  type        = list(string)
   default     = []
 
   validation {

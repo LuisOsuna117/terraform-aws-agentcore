@@ -182,9 +182,11 @@ variable "managed_memory" {
   default = null
 
   validation {
-    condition = var.managed_memory == null || var.managed_memory.strategies == null || alltrue([
-      for strategy in var.managed_memory.strategies : contains(["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE"], strategy)
-    ])
+    condition = var.managed_memory == null ? true : (
+      var.managed_memory.strategies == null ? true : alltrue([
+        for strategy in var.managed_memory.strategies : contains(["SEMANTIC", "SUMMARIZATION", "USER_PREFERENCE"], strategy)
+      ])
+    )
     error_message = "managed_memory.strategies may contain SEMANTIC, SUMMARIZATION, or USER_PREFERENCE."
   }
 }
@@ -238,7 +240,7 @@ variable "jwt_authorizer" {
   default = null
 
   validation {
-    condition = var.jwt_authorizer == null || alltrue([
+    condition = var.jwt_authorizer == null ? true : alltrue([
       for claim in var.jwt_authorizer.custom_claims : (
         contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
         contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
@@ -253,15 +255,17 @@ variable "jwt_authorizer" {
   }
 
   validation {
-    condition = var.jwt_authorizer == null || var.jwt_authorizer.private_endpoint == null || (
-      (var.jwt_authorizer.private_endpoint.managed_vpc_resource != null) !=
-      (var.jwt_authorizer.private_endpoint.self_managed_lattice_resource != null)
+    condition = var.jwt_authorizer == null ? true : (
+      var.jwt_authorizer.private_endpoint == null ? true : (
+        (var.jwt_authorizer.private_endpoint.managed_vpc_resource != null) !=
+        (var.jwt_authorizer.private_endpoint.self_managed_lattice_resource != null)
+      )
     )
     error_message = "jwt_authorizer.private_endpoint must configure exactly one managed or self-managed VPC resource."
   }
 
   validation {
-    condition = var.jwt_authorizer == null || alltrue([
+    condition = var.jwt_authorizer == null ? true : alltrue([
       for override in var.jwt_authorizer.private_endpoint_overrides : (
         (override.private_endpoint.managed_vpc_resource != null) !=
         (override.private_endpoint.self_managed_lattice_resource != null)
@@ -324,7 +328,7 @@ variable "tools" {
 
   validation {
     condition = alltrue([
-      for tool in var.tools : tool.config == null || (
+      for tool in var.tools : tool.config == null ? true : (
         length(compact([
           tool.config.remote_mcp == null ? "" : "remote_mcp",
           tool.config.agentcore_browser == null ? "" : "agentcore_browser",
@@ -373,15 +377,17 @@ variable "truncation" {
   default = null
 
   validation {
-    condition     = var.truncation == null || contains(["sliding_window", "summarization", "none"], var.truncation.strategy)
+    condition     = var.truncation == null ? true : contains(["sliding_window", "summarization", "none"], var.truncation.strategy)
     error_message = "truncation.strategy must be sliding_window, summarization, or none."
   }
 
   validation {
-    condition = var.truncation == null || var.truncation.config == null || length(compact([
-      var.truncation.config.sliding_window == null ? "" : "sliding_window",
-      var.truncation.config.summarization == null ? "" : "summarization",
-    ])) <= 1
+    condition = var.truncation == null ? true : (
+      var.truncation.config == null ? true : length(compact([
+        var.truncation.config.sliding_window == null ? "" : "sliding_window",
+        var.truncation.config.summarization == null ? "" : "summarization",
+      ])) <= 1
+    )
     error_message = "truncation.config may configure at most one strategy-specific block."
   }
 }

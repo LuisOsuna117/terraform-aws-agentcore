@@ -105,7 +105,7 @@ variable "token_vault_cmk" {
   default = null
 
   validation {
-    condition = var.token_vault_cmk == null || (
+    condition = var.token_vault_cmk == null ? true : (
       contains(["CustomerManagedKey", "ServiceManagedKey"], var.token_vault_cmk.key_type) &&
       (var.token_vault_cmk.key_type != "CustomerManagedKey" || var.token_vault_cmk.kms_key_arn != null)
     )

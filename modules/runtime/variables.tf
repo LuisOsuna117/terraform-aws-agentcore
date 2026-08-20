@@ -148,7 +148,7 @@ variable "authorizer_configuration" {
   default = null
 
   validation {
-    condition = var.authorizer_configuration == null || alltrue([
+    condition = var.authorizer_configuration == null ? true : alltrue([
       for claim in var.authorizer_configuration.custom_claims : (
         contains(["STRING", "STRING_ARRAY"], claim.inbound_token_claim_value_type) &&
         contains(["EQUALS", "CONTAINS", "CONTAINS_ANY"], claim.claim_match_operator) &&
@@ -163,15 +163,17 @@ variable "authorizer_configuration" {
   }
 
   validation {
-    condition = var.authorizer_configuration == null || var.authorizer_configuration.private_endpoint == null || (
-      (var.authorizer_configuration.private_endpoint.managed_vpc_resource != null) !=
-      (var.authorizer_configuration.private_endpoint.self_managed_lattice_resource != null)
+    condition = var.authorizer_configuration == null ? true : (
+      var.authorizer_configuration.private_endpoint == null ? true : (
+        (var.authorizer_configuration.private_endpoint.managed_vpc_resource != null) !=
+        (var.authorizer_configuration.private_endpoint.self_managed_lattice_resource != null)
+      )
     )
     error_message = "authorizer_configuration.private_endpoint must configure exactly one managed or self-managed VPC resource."
   }
 
   validation {
-    condition = var.authorizer_configuration == null || alltrue([
+    condition = var.authorizer_configuration == null ? true : alltrue([
       for override in var.authorizer_configuration.private_endpoint_overrides : (
         (override.private_endpoint.managed_vpc_resource != null) !=
         (override.private_endpoint.self_managed_lattice_resource != null)

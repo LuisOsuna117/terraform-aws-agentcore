@@ -99,9 +99,9 @@ locals {
     local.gateway_runtime_target,
   )
 
-  effective_gateway_runtime_invoke_arns = setunion(
+  effective_gateway_runtime_invoke_arns = concat(
     var.gateway_runtime_invoke_arns,
-    var.gateway_attach_runtime_target && var.create_runtime ? toset([local.gateway_runtime_arn]) : toset([]),
+    var.gateway_attach_runtime_target && var.create_runtime ? [local.gateway_runtime_arn] : [],
   )
 
   gateway_target_names = [for key, target in var.gateway_targets : coalesce(try(target.name, null), key)]
