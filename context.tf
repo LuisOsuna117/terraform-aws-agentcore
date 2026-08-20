@@ -1,7 +1,7 @@
 resource "aws_bedrockagentcore_memory" "this" {
-  for_each = var.memories
+  for_each = local.create ? var.memories : {}
 
-  name                      = each.value.name
+  name                      = coalesce(each.value.name, "${var.name}-${each.key}")
   description               = each.value.description
   event_expiry_duration     = each.value.event_expiry_duration
   encryption_key_arn        = each.value.encryption_key_arn
@@ -18,10 +18,10 @@ resource "aws_bedrockagentcore_memory" "this" {
 }
 
 resource "aws_bedrockagentcore_memory_strategy" "this" {
-  for_each = var.memory_strategies
+  for_each = local.create ? var.memory_strategies : {}
 
   memory_id                 = aws_bedrockagentcore_memory.this[each.value.memory_key].id
-  name                      = each.value.name
+  name                      = coalesce(each.value.name, "${var.name}-${each.key}")
   type                      = each.value.type
   description               = each.value.description
   namespaces                = each.value.namespaces
@@ -30,9 +30,9 @@ resource "aws_bedrockagentcore_memory_strategy" "this" {
 }
 
 resource "aws_bedrockagentcore_browser" "this" {
-  for_each = var.browsers
+  for_each = local.create ? var.browsers : {}
 
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   description        = each.value.description
   execution_role_arn = each.value.execution_role_arn
   tags               = local.common_tags
@@ -61,17 +61,17 @@ resource "aws_bedrockagentcore_browser" "this" {
 }
 
 resource "aws_bedrockagentcore_browser_profile" "this" {
-  for_each = var.browser_profiles
+  for_each = local.create ? var.browser_profiles : {}
 
-  name        = each.value.name
+  name        = coalesce(each.value.name, "${var.name}-${each.key}")
   description = each.value.description
   tags        = local.common_tags
 }
 
 resource "aws_bedrockagentcore_code_interpreter" "this" {
-  for_each = var.code_interpreters
+  for_each = local.create ? var.code_interpreters : {}
 
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   description        = each.value.description
   execution_role_arn = each.value.execution_role_arn
   tags               = local.common_tags
@@ -96,9 +96,9 @@ resource "aws_bedrockagentcore_code_interpreter" "this" {
 }
 
 resource "aws_bedrockagentcore_harness" "this" {
-  for_each = var.harnesses
+  for_each = local.create ? var.harnesses : {}
 
-  harness_name          = each.value.name
+  harness_name          = coalesce(each.value.name, "${var.name}-${each.key}")
   execution_role_arn    = each.value.execution_role_arn
   environment_variables = each.value.environment_variables
   allowed_tools         = each.value.allowed_tools

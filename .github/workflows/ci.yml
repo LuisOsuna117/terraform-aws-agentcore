@@ -14,167 +14,24 @@ permissions:
   contents: read
 
 jobs:
-  # ----------------------------------------------------------------------------
-  # 1. Format
-  # ----------------------------------------------------------------------------
-  fmt:
-    name: Format
+  compose:
+    name: Podman / ${{ matrix.service }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [format, test, lint, docs-check, security, release-notes]
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.11.2"
-          tofu_wrapper: false
-
-      - name: Check formatting
-        run: tofu fmt -check -recursive -diff
-
-  # ----------------------------------------------------------------------------
-  # 2. Validate (root module + examples)
-  # ----------------------------------------------------------------------------
-  validate:
-    name: Validate
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.11.2"
-          tofu_wrapper: false
-
-      - name: Init root module
-        run: tofu init -backend=false
-
-      - name: Validate root module
-        run: tofu validate
-
-      - name: Init examples/basic
-        working-directory: examples/basic
-        run: tofu init -backend=false
-
-      - name: Validate examples/basic
-        working-directory: examples/basic
-        run: tofu validate
-
-  # ----------------------------------------------------------------------------
-  # 3. Lint (TFLint)
-  # ----------------------------------------------------------------------------
-  tflint:
-    name: TFLint
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: latest
-
-      - name: Init TFLint
-        run: tflint --init
-
-      - name: Lint root module
-        run: tflint --config .tflint.hcl
-
-      - name: Lint examples/basic
-        working-directory: examples/basic
-        run: tflint --config ../../.tflint.hcl
-
-  # ----------------------------------------------------------------------------
-  # 4. Security scan (Trivy)
-  # ----------------------------------------------------------------------------
-  security:
-    name: Security
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      security-events: write   # upload SARIF to GitHub Code Scanning
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Trivy (IaC)
-        uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_SKIP_CHECK_UPDATE: "true"
-        with:
-          scan-type: config
-          scan-ref: .
-          exit-code: "1"           # fail the job if CRITICAL/HIGH findings exist
-          severity: CRITICAL,HIGH
-          format: table
-          trivy-config: trivy.yaml
-          trivyignores: .trivyignore
-
-      - name: Run Trivy (IaC) — emit SARIF
-        if: always()
-        uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_SKIP_CHECK_UPDATE: "true"
-        with:
-          scan-type: config
-          scan-ref: .
-          exit-code: "0"           # never block — SARIF upload is informational
-          severity: CRITICAL,HIGH
-          format: sarif
-          output: trivy-results.sarif
-          trivy-config: trivy.yaml
-          trivyignores: .trivyignore
-
-      - name: Upload SARIF to GitHub Code Scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-
-  # ----------------------------------------------------------------------------
-  # 5. Docs drift check
-  # ----------------------------------------------------------------------------
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # terraform-docs needs write-access to check diff; grant fetch only.
-          ref: ${{ github.head_ref }}
-
-      - name: Check terraform-docs drift
-        uses: terraform-docs/gh-actions@v1
-        with:
-          working-dir: .
-          output-file: README.md
-          output-method: inject
-          git-push: "false"
-          fail-on-diff: "true"
-          args: --lockfile=false
-
-  # ----------------------------------------------------------------------------
-  # 6. Release notes smoke test
-  # ----------------------------------------------------------------------------
-  release-notes:
-    name: Release notes
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "lts/*"
-
-      - name: Install release notes dependencies
+      - name: Install Podman Compose
         run: |
-          npm install --no-save \
-            "@semantic-release/release-notes-generator@14.1.1" \
-            conventional-changelog-conventionalcommits@9.3.1
+          sudo apt-get update
+          sudo apt-get install --yes podman podman-compose
 
-      - name: Verify release notes rendering
-        run: node scripts/verify-release-notes.mjs
+      - name: Validate Compose configuration
+        run: podman compose config
+
+      - name: Run ${{ matrix.service }}
+        run: podman compose run --rm ${{ matrix.service }}

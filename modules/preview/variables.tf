@@ -1,22 +1,27 @@
 variable "name" {
-  type = string
+  description = "CloudFormation stack name."
+  type        = string
 }
 
 variable "template_body" {
-  type = string
+  description = "CloudFormation template body for the isolated preview resource."
+  type        = string
 }
 
 variable "parameters" {
-  type    = map(string)
-  default = {}
+  description = "CloudFormation stack parameters."
+  type        = map(string)
+  default     = {}
 }
 
 variable "capabilities" {
-  type    = set(string)
-  default = []
+  description = "CloudFormation capabilities required by the template."
+  type        = set(string)
+  default     = []
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  description = "Tags applied to the CloudFormation stack."
+  type        = map(string)
+  default     = {}
 }

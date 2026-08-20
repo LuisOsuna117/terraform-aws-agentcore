@@ -16,21 +16,17 @@ const notes = await generateNotes(releaseNotesPlugin[1], {
   commits: [
     {
       hash: "0123456789abcdef0123456789abcdef01234567",
-      message: "feat(runtime): add IAM extensions and MMDSv2 enforcement",
-    },
-    {
-      hash: "89abcdef0123456789abcdef0123456789abcdef",
-      message: "fix(release): pin and verify changelog generation",
+      message: "feat!: rebuild AgentCore module v1\n\nBREAKING CHANGE: replace the v0 module interface",
     },
   ],
   lastRelease: {
     gitHead: "1111111111111111111111111111111111111111",
-    gitTag: "v0.7.0",
+    gitTag: "v0.8.0",
   },
   nextRelease: {
     gitHead: "2222222222222222222222222222222222222222",
-    gitTag: "v0.8.0",
-    version: "0.8.0",
+    gitTag: "v1.0.0",
+    version: "1.0.0",
   },
   options: {
     repositoryUrl: "https://github.com/LuisOsuna117/terraform-aws-agentcore.git",
@@ -40,9 +36,9 @@ const notes = await generateNotes(releaseNotesPlugin[1], {
 
 const expectedFragments = [
   "🚀 Features",
-  "add IAM extensions and MMDSv2 enforcement",
-  "🐛 Bug Fixes",
-  "pin and verify changelog generation",
+  "rebuild AgentCore module v1",
+  "⚠ BREAKING CHANGES",
+  "replace the v0 module interface",
 ];
 const missingFragments = expectedFragments.filter(
   (fragment) => !notes.includes(fragment),

@@ -15,6 +15,7 @@ variable "log_retention_days" {
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  description = "Tags applied to Registry Preview resources."
+  type        = map(string)
+  default     = {}
 }

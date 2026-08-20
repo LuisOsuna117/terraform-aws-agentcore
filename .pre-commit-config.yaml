@@ -1,11 +1,16 @@
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.105.0
+  - repo: local
     hooks:
-      - id: terraform_fmt
-      - id: terraform_docs
-        args:
-          - '--args=--lockfile=false'
+      - id: podman-format
+        name: Podman format gate
+        entry: podman compose run --rm format
+        language: system
+        pass_filenames: false
+      - id: podman-docs
+        name: Podman documentation gate
+        entry: podman compose run --rm docs-check
+        language: system
+        pass_filenames: false
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

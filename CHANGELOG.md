@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 1.0.0 (2026-08-18)
+## 1.0.0 (2026-08-20)
 
 - Replace the v0 interface with typed, multi-resource AgentCore maps.
 - Add native dual JWT/IAM runtime and gateway lanes, JWT passthrough, Gateway rules, Cedar `ENFORCE`, resource policies, Identity, Memory, Browser, Code Interpreter, Harness, Evaluations, and observability.

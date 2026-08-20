@@ -74,7 +74,7 @@ def _create(name, client_token):
         "/registries",
         {
             "name": name,
-            "description": "AEGIS shadow discovery; never an authorization source",
+            "description": "Shadow discovery only; never an authorization source",
             "approvalConfiguration": {"autoApprovalRules": []},
             "clientToken": client_token,
         },

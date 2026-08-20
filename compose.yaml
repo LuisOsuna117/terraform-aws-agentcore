@@ -1,0 +1,78 @@
+services:
+  format:
+    image: ghcr.io/opentofu/opentofu:1.11.2
+    working_dir: /workspace
+    entrypoint: [/bin/sh, -ec]
+    command: [tofu fmt -check -recursive -diff /workspace]
+    volumes:
+      - .:/workspace:ro
+
+  test:
+    image: ghcr.io/opentofu/opentofu:1.11.2
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mkdir -p /tmp/module
+        tar --exclude=.git --exclude=.terraform --exclude=.terraform.lock.hcl -C /workspace -cf - . | tar -C /tmp/module -xf -
+        if grep -Rin '[a]egis' /tmp/module; then
+          echo "Internal product references are not allowed in this community module."
+          exit 1
+        fi
+        cd /tmp/module
+        tofu init -backend=false -no-color
+        tofu validate -no-color
+        tofu test -no-color
+        for example in basic complete identity; do
+          cd "/tmp/module/examples/$${example}"
+          tofu init -backend=false -no-color
+          tofu validate -no-color
+        done
+    volumes:
+      - .:/workspace:ro
+
+  docs:
+    image: quay.io/terraform-docs/terraform-docs:0.19.0
+    command: [markdown, table, --lockfile=false, --output-file, README.md, --output-mode, inject, /workspace]
+    volumes:
+      - .:/workspace
+
+  docs-check:
+    image: quay.io/terraform-docs/terraform-docs:0.19.0
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mkdir -p /tmp/module
+        tar --exclude=.git --exclude=.terraform --exclude=.terraform.lock.hcl -C /workspace -cf - . | tar -C /tmp/module -xf -
+        terraform-docs markdown table --lockfile=false --output-file README.md --output-mode inject /tmp/module
+        cmp /workspace/README.md /tmp/module/README.md
+    volumes:
+      - .:/workspace:ro
+
+  lint:
+    image: ghcr.io/terraform-linters/tflint:v0.64.0
+    working_dir: /workspace
+    entrypoint: [/bin/sh, -ec]
+    command: [tflint --init && tflint --config .tflint.hcl]
+    volumes:
+      - .:/workspace:ro
+
+  security:
+    image: docker.io/aquasec/trivy:0.74.0
+    entrypoint: [/bin/sh, -ec]
+    command: ["trivy config --exit-code 1 --severity CRITICAL,HIGH --config /workspace/trivy.yaml /workspace"]
+    volumes:
+      - .:/workspace:ro
+
+  release-notes:
+    image: docker.io/library/node:22-alpine
+    working_dir: /tmp
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mkdir -p /tmp/release-notes
+        cd /tmp/release-notes
+        cp /workspace/.releaserc.json /workspace/scripts/verify-release-notes.mjs .
+        npm install --no-save @semantic-release/release-notes-generator@14.1.1 conventional-changelog-conventionalcommits@9.3.1
+        node verify-release-notes.mjs
+    volumes:
+      - .:/workspace:ro

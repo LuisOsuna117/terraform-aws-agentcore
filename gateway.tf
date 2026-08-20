@@ -1,23 +1,23 @@
 resource "aws_bedrockagentcore_workload_identity" "this" {
-  for_each = var.workload_identities
+  for_each = local.create ? var.workload_identities : {}
 
-  name                                = each.value.name
+  name                                = coalesce(each.value.name, "${var.name}-${each.key}")
   allowed_resource_oauth2_return_urls = each.value.allowed_oauth_return_urls
 }
 
 resource "aws_bedrockagentcore_api_key_credential_provider" "this" {
-  for_each = var.api_key_credential_providers
+  for_each = local.create ? var.api_key_credential_providers : {}
 
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   api_key_wo         = each.value.api_key_write_only
   api_key_wo_version = each.value.secret_version
   tags               = local.common_tags
 }
 
 resource "aws_bedrockagentcore_oauth2_credential_provider" "this" {
-  for_each = var.oauth2_credential_providers
+  for_each = local.create ? var.oauth2_credential_providers : {}
 
-  name                       = each.value.name
+  name                       = coalesce(each.value.name, "${var.name}-${each.key}")
   credential_provider_vendor = "CustomOauth2"
   tags                       = local.common_tags
 
@@ -45,18 +45,18 @@ resource "aws_bedrockagentcore_oauth2_credential_provider" "this" {
 }
 
 resource "aws_bedrockagentcore_policy_engine" "this" {
-  for_each = var.policy_engines
+  for_each = local.create ? var.policy_engines : {}
 
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   description        = each.value.description
   encryption_key_arn = each.value.encryption_key_arn
   tags               = local.common_tags
 }
 
 resource "aws_bedrockagentcore_policy" "this" {
-  for_each = var.policies
+  for_each = local.create ? var.policies : {}
 
-  name             = each.value.name
+  name             = coalesce(each.value.name, "${var.name}-${each.key}")
   description      = each.value.description
   policy_engine_id = aws_bedrockagentcore_policy_engine.this[each.value.engine_key].policy_engine_id
   validation_mode  = each.value.validation_mode
@@ -75,9 +75,9 @@ resource "aws_bedrockagentcore_policy" "this" {
 }
 
 resource "aws_bedrockagentcore_gateway" "this" {
-  for_each = var.gateways
+  for_each = local.create ? var.gateways : {}
 
-  name            = each.value.name
+  name            = coalesce(each.value.name, "${var.name}-${each.key}")
   description     = each.value.description
   role_arn        = each.value.role_arn
   authorizer_type = each.value.authentication
@@ -130,10 +130,10 @@ resource "aws_bedrockagentcore_gateway" "this" {
 }
 
 resource "aws_bedrockagentcore_gateway_target" "this" {
-  for_each = var.gateway_targets
+  for_each = local.create ? var.gateway_targets : {}
 
   gateway_identifier = aws_bedrockagentcore_gateway.this[each.value.gateway_key].gateway_id
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   description        = each.value.description
 
   credential_provider_configuration {
@@ -208,7 +208,7 @@ resource "aws_bedrockagentcore_gateway_target" "this" {
 }
 
 resource "aws_bedrockagentcore_gateway_rule" "this" {
-  for_each = var.gateway_rules
+  for_each = local.create ? var.gateway_rules : {}
 
   gateway_identifier = aws_bedrockagentcore_gateway.this[each.value.gateway_key].gateway_id
   priority           = each.value.priority
@@ -243,7 +243,7 @@ resource "aws_bedrockagentcore_gateway_rule" "this" {
 }
 
 resource "aws_ssm_parameter" "gateway_discovery" {
-  for_each = var.gateway_discovery_parameters
+  for_each = local.create ? var.gateway_discovery_parameters : {}
 
   name        = each.value.name
   description = each.value.description

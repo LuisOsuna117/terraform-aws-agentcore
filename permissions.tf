@@ -1,5 +1,5 @@
 locals {
-  runtime_role_policy_statements = {
+  runtime_role_policy_statements = local.create ? {
     for policy_key, policy in var.runtime_role_permissions : policy_key => [
       for statement in policy.statements : {
         Sid    = statement.sid
@@ -15,8 +15,8 @@ locals {
         )))
       }
     ]
-  }
-  gateway_role_policy_statements = {
+  } : {}
+  gateway_role_policy_statements = local.create ? {
     for policy_key, policy in var.gateway_role_permissions : policy_key => [
       for statement in policy.statements : {
         Sid    = statement.sid
@@ -31,11 +31,11 @@ locals {
         )))
       }
     ]
-  }
+  } : {}
 }
 
 resource "aws_iam_role_policy" "runtime" {
-  for_each = var.runtime_role_permissions
+  for_each = local.create ? var.runtime_role_permissions : {}
 
   name = "agentcore-runtime-${each.key}"
   role = element(reverse(split("/", var.runtimes[each.value.runtime_key].role_arn)), 0)
@@ -46,7 +46,7 @@ resource "aws_iam_role_policy" "runtime" {
 }
 
 resource "aws_iam_role_policy" "gateway" {
-  for_each = var.gateway_role_permissions
+  for_each = local.create ? var.gateway_role_permissions : {}
 
   name = "agentcore-gateway-${each.key}"
   role = element(reverse(split("/", var.gateways[each.value.gateway_key].role_arn)), 0)

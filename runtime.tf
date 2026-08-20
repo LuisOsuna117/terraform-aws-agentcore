@@ -1,14 +1,7 @@
-locals {
-  common_tags = merge({
-    ManagedBy = "OpenTofu"
-    Module    = "terraform-aws-agentcore"
-  }, var.tags)
-}
-
 resource "aws_bedrockagentcore_agent_runtime" "this" {
-  for_each = var.runtimes
+  for_each = local.create ? var.runtimes : {}
 
-  agent_runtime_name = each.value.name
+  agent_runtime_name = coalesce(each.value.name, replace("${var.name}_${each.key}", "-", "_"))
   description        = each.value.description
   role_arn           = each.value.role_arn
   environment_variables = merge(
@@ -104,27 +97,27 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
 }
 
 resource "aws_bedrockagentcore_agent_runtime_endpoint" "this" {
-  for_each = var.runtime_endpoints
+  for_each = local.create ? var.runtime_endpoints : {}
 
   agent_runtime_id      = aws_bedrockagentcore_agent_runtime.this[each.value.runtime_key].agent_runtime_id
   agent_runtime_version = each.value.runtime_version
-  name                  = each.value.name
+  name                  = coalesce(each.value.name, "${var.name}-${each.key}")
   description           = each.value.description
   tags                  = local.common_tags
 }
 
 locals {
-  resource_policy_arns = {
+  resource_policy_arns = local.create ? {
     for key, binding in var.resource_policies : key => binding.resource_arn != null ? binding.resource_arn : (
       binding.resource_type == "RUNTIME" ? aws_bedrockagentcore_agent_runtime.this[binding.resource_key].agent_runtime_arn :
       binding.resource_type == "GATEWAY" ? aws_bedrockagentcore_gateway.this[binding.resource_key].gateway_arn :
       aws_bedrockagentcore_memory.this[binding.resource_key].arn
     )
-  }
+  } : {}
 }
 
 resource "aws_bedrockagentcore_resource_policy" "this" {
-  for_each = var.resource_policies
+  for_each = local.create ? var.resource_policies : {}
 
   resource_arn = local.resource_policy_arns[each.key]
   policy = each.value.policy != null ? each.value.policy : jsonencode({

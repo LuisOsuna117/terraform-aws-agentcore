@@ -1,7 +1,9 @@
 output "stack_id" {
-  value = aws_cloudformation_stack.this.id
+  description = "CloudFormation stack identifier."
+  value       = aws_cloudformation_stack.this.id
 }
 
 output "outputs" {
-  value = aws_cloudformation_stack.this.outputs
+  description = "CloudFormation stack outputs."
+  value       = aws_cloudformation_stack.this.outputs
 }

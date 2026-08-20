@@ -22,15 +22,60 @@ mock_provider "aws" {
   }
 }
 
+run "minimal_runtime_uses_module_name" {
+  command = plan
+
+  variables {
+    name = "example"
+
+    runtimes = {
+      primary = {
+        role_arn       = "arn:aws:iam::111122223333:role/example-runtime"
+        image_uri      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/example@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        authentication = "AWS_IAM"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_agent_runtime.this["primary"].agent_runtime_name == "example_primary"
+    error_message = "Resource names should default from the module name and map key."
+  }
+}
+
+run "create_false_creates_nothing" {
+  command = plan
+
+  variables {
+    create = false
+    name   = "disabled"
+
+    runtimes = {
+      primary = {
+        role_arn       = "arn:aws:iam::111122223333:role/example-runtime"
+        image_uri      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/example@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        authentication = "AWS_IAM"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_bedrockagentcore_agent_runtime.this) == 0
+    error_message = "create=false should disable all module resources."
+  }
+}
+
 run "dual_lane_is_fail_closed" {
   command = plan
 
   variables {
+    name = "example"
+
     runtimes = {
       operator = {
-        name           = "aegis_operator"
-        role_arn       = "arn:aws:iam::111122223333:role/aegis-operator"
-        image_uri      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/aegis@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        name           = "example_operator"
+        role_arn       = "arn:aws:iam::111122223333:role/example-operator"
+        image_uri      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/example@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         authentication = "CUSTOM_JWT"
         jwt = {
           discovery_url       = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example/.well-known/openid-configuration"
@@ -40,14 +85,14 @@ run "dual_lane_is_fail_closed" {
             name        = "cognito:groups"
             value_type  = "STRING_ARRAY"
             operator    = "CONTAINS"
-            string_list = ["aegis-itops-cloud-investigator"]
+            string_list = ["example-operators"]
           }]
         }
       }
       automation = {
-        name                           = "aegis_automation"
-        role_arn                       = "arn:aws:iam::111122223333:role/aegis-automation"
-        image_uri                      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/aegis@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        name                           = "example_automation"
+        role_arn                       = "arn:aws:iam::111122223333:role/example-automation"
+        image_uri                      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/example@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         authentication                 = "AWS_IAM"
         browser_id_environment         = { AGENTCORE_BROWSER_ID = "readonly" }
         browser_profile_id_environment = { AGENTCORE_BROWSER_PROFILE_ID = "readonly" }
@@ -55,25 +100,25 @@ run "dual_lane_is_fail_closed" {
     }
 
     policy_engines = {
-      itops = { name = "aegis_itops" }
+      access = { name = "example_access" }
     }
 
     gateways = {
       human = {
-        name              = "aegis-human"
-        role_arn          = "arn:aws:iam::111122223333:role/aegis-human-gateway"
+        name              = "example-human"
+        role_arn          = "arn:aws:iam::111122223333:role/example-human-gateway"
         authentication    = "CUSTOM_JWT"
-        policy_engine_key = "itops"
+        policy_engine_key = "access"
         jwt = {
           discovery_url   = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example/.well-known/openid-configuration"
           allowed_clients = ["portal-client"]
         }
       }
       automation = {
-        name              = "aegis-automation"
-        role_arn          = "arn:aws:iam::111122223333:role/aegis-automation-gateway"
+        name              = "example-automation"
+        role_arn          = "arn:aws:iam::111122223333:role/example-automation-gateway"
         authentication    = "AWS_IAM"
-        policy_engine_key = "itops"
+        policy_engine_key = "access"
       }
     }
 
@@ -125,24 +170,24 @@ run "dual_lane_is_fail_closed" {
     }
 
     code_interpreters = {
-      isolated = { name = "aegis_ci" }
+      isolated = { name = "example_ci" }
     }
 
     browsers = {
-      readonly = { name = "aegis_readonly_browser" }
+      readonly = { name = "example_readonly_browser" }
     }
 
     browser_profiles = {
-      readonly = { name = "aegis_readonly_profile" }
+      readonly = { name = "example_readonly_profile" }
     }
 
     observability = {
-      usage = { log_group_name = "/aws/bedrock-agentcore/aegis/usage" }
+      usage = { log_group_name = "/aws/bedrock-agentcore/example/usage" }
     }
 
     registries = {
       shadow = {
-        name = "aegis_shadow_registry"
+        name = "example_shadow_registry"
       }
     }
   }

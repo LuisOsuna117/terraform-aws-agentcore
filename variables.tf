@@ -1,3 +1,19 @@
+variable "create" {
+  description = "Controls whether this module creates resources."
+  type        = bool
+  default     = true
+}
+
+variable "name" {
+  description = "Name used as the default prefix for module-managed resources."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.name)) > 0
+    error_message = "name must not be empty."
+  }
+}
+
 variable "tags" {
   description = "Tags applied to every taggable resource."
   type        = map(string)
@@ -7,7 +23,7 @@ variable "tags" {
 variable "runtimes" {
   description = "AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM_JWT and AWS_IAM cannot be combined."
   type = map(object({
-    name                            = string
+    name                            = optional(string)
     role_arn                        = string
     image_uri                       = string
     authentication                  = string
@@ -60,7 +76,7 @@ variable "runtime_endpoints" {
   description = "Named immutable Runtime endpoints."
   type = map(object({
     runtime_key     = string
-    name            = string
+    name            = optional(string)
     description     = optional(string)
     runtime_version = optional(string)
   }))
@@ -70,7 +86,7 @@ variable "runtime_endpoints" {
 variable "workload_identities" {
   description = "AgentCore workload identities for outbound authentication."
   type = map(object({
-    name                      = string
+    name                      = optional(string)
     allowed_oauth_return_urls = optional(set(string), [])
   }))
   default = {}
@@ -79,7 +95,7 @@ variable "workload_identities" {
 variable "api_key_credential_providers" {
   description = "AgentCore Identity API-key providers. The key is write-only and is never returned by this module."
   type = map(object({
-    name               = string
+    name               = optional(string)
     api_key_write_only = string
     secret_version     = number
   }))
@@ -89,7 +105,7 @@ variable "api_key_credential_providers" {
 variable "oauth2_credential_providers" {
   description = "Custom AgentCore Identity OAuth2 providers. Client credentials are write-only and are never returned."
   type = map(object({
-    name                     = string
+    name                     = optional(string)
     client_id_write_only     = string
     client_secret_write_only = string
     credentials_version      = number
@@ -117,7 +133,7 @@ variable "oauth2_credential_providers" {
 variable "policy_engines" {
   description = "AgentCore Cedar policy engines."
   type = map(object({
-    name               = string
+    name               = optional(string)
     description        = optional(string)
     encryption_key_arn = optional(string)
   }))
@@ -128,7 +144,7 @@ variable "policies" {
   description = "Cedar policies, normally generated tool-by-tool from the caller's security catalog."
   type = map(object({
     engine_key = string
-    name       = string
+    name       = optional(string)
     statement  = optional(string)
     scoped = optional(object({
       gateway_key    = string
@@ -231,7 +247,7 @@ variable "gateway_role_permissions" {
 variable "gateways" {
   description = "AgentCore Gateways. An attached policy engine always runs in ENFORCE mode."
   type = map(object({
-    name              = string
+    name              = optional(string)
     role_arn          = string
     authentication    = string
     description       = optional(string)
@@ -270,7 +286,7 @@ variable "gateway_targets" {
   description = "AgentCore Runtime or MCP-server Gateway targets with one explicit outbound credential mode."
   type = map(object({
     gateway_key               = string
-    name                      = string
+    name                      = optional(string)
     target_type               = string
     runtime_key               = optional(string)
     runtime_arn               = optional(string)
@@ -349,7 +365,7 @@ variable "gateway_discovery_parameters" {
 variable "memories" {
   description = "AgentCore Memory stores. Namespace content is never an authority source."
   type = map(object({
-    name                      = string
+    name                      = optional(string)
     event_expiry_duration     = number
     description               = optional(string)
     encryption_key_arn        = optional(string)
@@ -366,7 +382,7 @@ variable "memory_strategies" {
   description = "Memory strategies attached to a module-managed Memory."
   type = map(object({
     memory_key                = string
-    name                      = string
+    name                      = optional(string)
     type                      = string
     description               = optional(string)
     namespaces                = optional(list(string), [])
@@ -379,7 +395,7 @@ variable "memory_strategies" {
 variable "browsers" {
   description = "AgentCore Browser sandboxes. VPC mode requires subnets and security groups."
   type = map(object({
-    name               = string
+    name               = optional(string)
     description        = optional(string)
     execution_role_arn = optional(string)
     network_mode       = optional(string, "PUBLIC")
@@ -393,7 +409,7 @@ variable "browsers" {
 variable "browser_profiles" {
   description = "Reusable Browser profiles."
   type = map(object({
-    name        = string
+    name        = optional(string)
     description = optional(string)
   }))
   default = {}
@@ -402,7 +418,7 @@ variable "browser_profiles" {
 variable "code_interpreters" {
   description = "AgentCore Code Interpreter sandboxes. SANDBOX is the safe no-network default."
   type = map(object({
-    name               = string
+    name               = optional(string)
     description        = optional(string)
     execution_role_arn = optional(string)
     network_mode       = optional(string, "SANDBOX")
@@ -415,7 +431,7 @@ variable "code_interpreters" {
 variable "harnesses" {
   description = "Managed Harness configurations for non-production experimentation without effect tools."
   type = map(object({
-    name                  = string
+    name                  = optional(string)
     execution_role_arn    = string
     image_uri             = string
     model_id              = string
@@ -440,7 +456,7 @@ variable "harnesses" {
 variable "evaluators" {
   description = "AgentCore evaluators. Configure exactly one of code_based or llm_judge."
   type = map(object({
-    name        = string
+    name        = optional(string)
     level       = string
     description = optional(string)
     kms_key_arn = optional(string)
@@ -474,7 +490,7 @@ variable "evaluators" {
 variable "online_evaluations" {
   description = "Online evaluation configs sourcing sanitized AgentCore telemetry from CloudWatch Logs."
   type = map(object({
-    name                    = string
+    name                    = optional(string)
     execution_role_arn      = string
     evaluator_keys          = set(string)
     log_group_names         = set(string)
@@ -490,7 +506,7 @@ variable "online_evaluations" {
 variable "registries" {
   description = "AWS Agent Registry Preview catalogs in the current agent-registry namespace, isolated behind CloudFormation until the AWS provider exposes a native resource."
   type = map(object({
-    name               = string
+    name               = optional(string)
     log_retention_days = optional(number, 365)
   }))
   default = {}
@@ -521,7 +537,7 @@ variable "observability" {
 variable "preview_stacks" {
   description = "Isolated CloudFormation stacks for AgentCore Preview resources absent from the AWS provider. Templates must reference secrets externally."
   type = map(object({
-    name          = string
+    name          = optional(string)
     template_body = string
     parameters    = optional(map(string), {})
     capabilities  = optional(set(string), [])

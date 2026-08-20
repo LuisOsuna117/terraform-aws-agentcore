@@ -1,7 +1,9 @@
 output "registry_id" {
-  value = try(aws_cloudformation_stack.this.outputs["RegistryId"], null)
+  description = "Agent Registry identifier when returned by the preview API."
+  value       = try(aws_cloudformation_stack.this.outputs["RegistryId"], null)
 }
 
 output "registry_arn" {
-  value = try(aws_cloudformation_stack.this.outputs["RegistryArn"], null)
+  description = "Agent Registry ARN when returned by the preview API."
+  value       = try(aws_cloudformation_stack.this.outputs["RegistryArn"], null)
 }

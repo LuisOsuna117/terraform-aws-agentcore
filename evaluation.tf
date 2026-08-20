@@ -1,7 +1,7 @@
 resource "aws_bedrockagentcore_evaluator" "this" {
-  for_each = var.evaluators
+  for_each = local.create ? var.evaluators : {}
 
-  evaluator_name = each.value.name
+  evaluator_name = coalesce(each.value.name, "${var.name}-${each.key}")
   description    = each.value.description
   level          = each.value.level
   kms_key_arn    = each.value.kms_key_arn
@@ -47,9 +47,9 @@ resource "aws_bedrockagentcore_evaluator" "this" {
 }
 
 resource "aws_bedrockagentcore_online_evaluation_config" "this" {
-  for_each = var.online_evaluations
+  for_each = local.create ? var.online_evaluations : {}
 
-  online_evaluation_config_name = each.value.name
+  online_evaluation_config_name = coalesce(each.value.name, "${var.name}-${each.key}")
   description                   = each.value.description
   evaluation_execution_role_arn = each.value.execution_role_arn
   enable_on_create              = each.value.enable_on_create
@@ -80,7 +80,7 @@ resource "aws_bedrockagentcore_online_evaluation_config" "this" {
 }
 
 resource "aws_cloudwatch_log_group" "observability" {
-  for_each = var.observability
+  for_each = local.create ? var.observability : {}
 
   name              = each.value.log_group_name
   retention_in_days = each.value.retention_in_days
@@ -89,10 +89,10 @@ resource "aws_cloudwatch_log_group" "observability" {
 }
 
 module "preview" {
-  for_each = var.preview_stacks
+  for_each = local.create ? var.preview_stacks : {}
   source   = "./modules/preview"
 
-  name          = each.value.name
+  name          = coalesce(each.value.name, "${var.name}-${each.key}")
   template_body = each.value.template_body
   parameters    = each.value.parameters
   capabilities  = each.value.capabilities
@@ -100,10 +100,10 @@ module "preview" {
 }
 
 module "agent_registry_preview" {
-  for_each = var.registries
+  for_each = local.create ? var.registries : {}
   source   = "./modules/agent-registry-preview"
 
-  name               = each.value.name
+  name               = coalesce(each.value.name, "${var.name}-${each.key}")
   log_retention_days = each.value.log_retention_days
   tags               = local.common_tags
 }
