@@ -1,6 +1,8 @@
-# General Gateway with AgentCore Runtime Agent Target
+# General Gateway with an HTTP Runtime Target
 
-This example provisions a general AgentCore Gateway with no MCP aggregation protocol and attaches one `AGENT` target backed by an AgentCore Runtime. The gateway forwards requests directly to the runtime without MCP aggregation or protocol translation.
+This example provisions a general AgentCore Gateway and attaches one HTTP
+Runtime target. The Gateway forwards requests directly to AgentCore Runtime
+without MCP aggregation or protocol translation.
 
 ```bash
 tofu init

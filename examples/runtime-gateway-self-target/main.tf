@@ -19,6 +19,7 @@ module "agentcore" {
 
   create_runtime        = true
   create_build_pipeline = false
+  create_execution_role = true
   create_gateway        = true
 
   image_uri       = var.image_uri

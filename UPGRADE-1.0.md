@@ -2,6 +2,28 @@
 
 Version 1.0 replaces the Gateway Target compatibility layer with the native `aws_bedrockagentcore_gateway_target` resource from AWS Provider 6.61. This is intentionally a breaking change: v1 does not retain aliases or CloudFormation-managed target resources.
 
+## Explicit resource creation
+
+The root module is opt-in in v1. A call containing only `name` creates no
+resources. Enable the composition you need explicitly:
+
+```hcl
+create_build_pipeline  = true
+trigger_build_on_apply = true
+create_runtime         = true
+create_execution_role  = true
+```
+
+The build trigger, broad Bedrock managed policy, wildcard model invocation,
+UserId workload-token path, ECR repository policy, and ECR lifecycle policy
+are disabled by default. Set `ecr_lifecycle_keep_count` or
+`ecr_pull_principals` only when you want those resources.
+
+For an externally built Runtime, provide a tagged or digest-pinned Amazon ECR
+URI and enable Runtime explicitly. For CodeBuild without an apply-time trigger,
+create the build infrastructure first, push the image, and enable Runtime in a
+second apply. See the focused examples for both workflows.
+
 ## Gateway Target configuration
 
 Replace `target_type`, flat endpoint/Runtime fields, and `gateway_mcp_targets` with the native `target_configuration` shape:
@@ -44,6 +66,6 @@ If temporary downtime is acceptable, first apply v0.x with all Gateway Target ma
 
 ## Requirements
 
-- AWS Provider `>= 6.61`
-- OpenTofu or Terraform `>= 1.8`
+- AWS Provider `>= 6.61, < 7.0`
+- OpenTofu or Terraform `>= 1.11`
 - GitHub-hosted or self-hosted Actions runners compatible with Node.js 24 when using the included workflows

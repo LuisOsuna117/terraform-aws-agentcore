@@ -1,10 +1,10 @@
 terraform {
-  required_version = ">= 1.8"
+  required_version = ">= 1.11"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 6.61"
+      version = ">= 6.61, < 7.0"
     }
   }
 }
@@ -14,7 +14,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Example   = "terraform-aws-agentcore/gateway-agent-runtime-target"
+      Example   = "terraform-aws-agentcore/gateway-runtime-target"
       ManagedBy = "Terraform"
     }
   }

@@ -15,9 +15,6 @@
 # After apply, trigger a build manually:
 #   aws codebuild start-build --project-name <codebuild_project_name>
 #
-# Or use the provided script directly:
-#   scripts/build-image.sh <project> <region> <repo-name> <tag> <repo-url>
-#
 # Run:
 #   tofu init
 #   tofu apply
@@ -27,7 +24,7 @@ module "agentcore" {
   source = "../.."
   # Uncomment once published to the registry:
   # source  = "LuisOsuna117/agentcore/aws"
-  # version = "~> 2.0"
+  # version = "~> 1.0"
 
   # ---- Required ---------------------------------------------------------------
   name = var.name
@@ -35,8 +32,10 @@ module "agentcore" {
   # ---- Build workflow ---------------------------------------------------------
   create_build_pipeline  = true
   trigger_build_on_apply = false # <-- builds are NOT triggered automatically
+  create_runtime         = false # enable only after the image exists
+  create_execution_role  = false
 
-  agent_source_dir = "${path.module}/../basic/agent-code"
+  agent_source_dir = "${path.module}/agent-code"
 
   # ---- Runtime ----------------------------------------------------------------
   description  = "CodeBuild workflow — trigger disabled."
@@ -46,9 +45,6 @@ module "agentcore" {
   environment_variables = {
     LOG_LEVEL = "INFO"
   }
-
-  # ---- IAM --------------------------------------------------------------------
-  attach_bedrock_fullaccess_policy = true
 
   # ---- Tags -------------------------------------------------------------------
   tags = {

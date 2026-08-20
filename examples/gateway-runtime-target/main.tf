@@ -1,5 +1,5 @@
 # ==============================================================================
-# Example: General Gateway with AgentCore Runtime Agent Target
+# Example: General Gateway with an HTTP Runtime Target
 #
 # Provisions a standalone general AgentCore Gateway (no MCP aggregation protocol)
 # and attaches one direct HTTP target backed by an AgentCore Runtime. Requests are
@@ -46,6 +46,6 @@ module "agentcore" {
 
   tags = {
     Environment = "example"
-    Workflow    = "gateway-agent-runtime-target"
+    Workflow    = "gateway-runtime-target"
   }
 }

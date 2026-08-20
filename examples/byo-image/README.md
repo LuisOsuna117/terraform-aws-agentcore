@@ -2,8 +2,6 @@
 
 Deploys an AgentCore runtime using a container image **you supply**. No CodeBuild project, S3 bucket, or ECR repository is created.
 
-The machine running `apply` needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
-
 ## Use this when
 
 - You already have a CI/CD pipeline (GitHub Actions, GitLab CI, etc.) that builds and pushes your agent image.
@@ -28,10 +26,12 @@ The machine running `apply` needs AWS CLI v2.35+ (or another release that expose
 ```hcl
 module "agentcore" {
   source = "LuisOsuna117/agentcore/aws"
-  version = "~> 2.0"
+  version = "~> 1.0"
 
   name                  = "my-agent"
   create_build_pipeline = false
+  create_runtime        = true
+  create_execution_role = true
   image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 }
 ```
@@ -43,7 +43,8 @@ tofu apply -var="image_uri=123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent
 
 ## Private ECR images
 
-If your image lives in a private ECR repository, add a pull statement:
+AgentCore Runtime accepts images from Amazon ECR. Grant the execution role
+permission to pull the selected repository:
 
 ```hcl
 additional_iam_statements = [

@@ -176,10 +176,9 @@ resource "terraform_data" "validations" {
 }
 
 # ==============================================================================
-# Build Submodule (codebuild mode only)
+# Build submodule
 #
-# Provisions ECR, S3, CodeBuild, IAM for the build pipeline, and optionally
-# triggers a build on apply. Not created when build_mode = "byo".
+# Provisions ECR, S3, CodeBuild, and build IAM only when explicitly enabled.
 # ==============================================================================
 
 module "build" {

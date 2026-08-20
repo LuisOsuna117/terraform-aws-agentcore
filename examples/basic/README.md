@@ -4,14 +4,12 @@ This example provisions a minimal Amazon Bedrock AgentCore runtime using the
 [terraform-aws-agentcore](https://github.com/LuisOsuna117/terraform-aws-agentcore)
 module.
 
-The machine running `apply` needs AWS CLI v2.35+ (or another release that exposes `bedrock-agentcore-control update-agent-runtime --metadata-configuration`) because the module enables the required MMDSv2 setting after runtime creation.
-
 ## What it creates
 
 - An AgentCore runtime (`PUBLIC` network mode)
 - An ECR repository for the agent container image
 - A CodeBuild project that builds and pushes the image automatically
-- An IAM execution role with least-privilege permissions
+- An IAM execution role with the service baseline and no wildcard model access
 - A private S3 bucket for agent source code
 
 ## Usage
@@ -48,8 +46,8 @@ The machine running `apply` needs AWS CLI v2.35+ (or another release that expose
 
 | Requirement | Version |
 |---|---|
-| OpenTofu or Terraform | `>= 1.8` |
-| hashicorp/aws provider | `>= 6.61` |
+| OpenTofu or Terraform | `>= 1.11` |
+| hashicorp/aws provider | `>= 6.61, < 7.0` |
 | AWS CLI v2 | latest |
 | bash | any |
 
@@ -63,4 +61,5 @@ The machine running `apply` needs AWS CLI v2.35+ (or another release that expose
 ## Notes
 
 - `ecr_force_delete` and `source_bucket_force_destroy` are left at their defaults (`false`) — set them to `true` if you want `tofu destroy` to clean up completely in a sandbox environment.
+- Every created feature is explicitly enabled in `main.tf`; a root-module call with only `name` creates no resources.
 - The agent stub in `agent-code/agent.py` depends on the `bedrock-agentcore` Python package. Update `requirements.txt` to pin a specific version for production use.

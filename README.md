@@ -1,13 +1,15 @@
 # terraform-aws-agentcore
 
 > **Community module** — not affiliated with or endorsed by AWS.
-> Published on the [Terraform Registry](https://registry.terraform.io/modules/LuisOsuna117/agentcore/aws) and the [OpenTofu Registry](https://search.opentofu.org/module/LuisOsuna117/agentcore/aws). Compatible with both **Terraform ≥ 1.8** and **OpenTofu ≥ 1.8**.
+> Published on the [Terraform Registry](https://registry.terraform.io/modules/LuisOsuna117/agentcore/aws) and the [OpenTofu Registry](https://search.opentofu.org/module/LuisOsuna117/agentcore/aws). Compatible with both **Terraform ≥ 1.11** and **OpenTofu ≥ 1.11**.
 
 A Terraform / OpenTofu module that provisions [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html) resources on AWS, together with the supporting infrastructure needed to build and deploy containerised agents.
 
 Upgrading from v0.x? Read [Upgrade to v1.0](UPGRADE-1.0.md) before changing the module version.
 
-**Easy to start, extensible for production.** One required variable (`name`) gets a working runtime. A set of clearly named `create_*` boolean flags let you opt-in to additional resources — without forking the module or fighting the abstractions.
+**Explicit to start, composable for production.** `name` is the only required
+input, and creates no resources by itself. Enable only the AgentCore services
+and supporting infrastructure your workload needs.
 
 ---
 
@@ -19,33 +21,37 @@ module "agentcore" {
   version = "~> 1.0"
 
   name = "my-agent"
+
+  create_build_pipeline  = true
+  trigger_build_on_apply = true
+  create_runtime         = true
+  create_execution_role  = true
 }
 ```
 
 Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terraform apply` (or `tofu apply`). That's it.
 
-> **Windows or CI without bash?** Set `trigger_build_on_apply = false` and use the `codebuild_start_build_command` output to drive builds from your pipeline — or skip the build entirely with `create_build_pipeline = false` and a pre-built `image_uri`.
-
-> **MMDSv2 apply prerequisite:** since June 30, 2026, AgentCore rejects invocations of runtimes without MMDSv2. While `hashicorp/aws` does not expose AgentCore Runtime `metadataConfiguration`, the module enforces `requireMMDSV2 = true` with `UpdateAgentRuntime`. The machine running `apply` needs an AWS CLI v2 release that includes `bedrock-agentcore-control update-agent-runtime` and `--metadata-configuration` (AWS CLI v2.35+ recommended).
+> **Windows or CI without bash?** Use the two-phase
+> [`codebuild-no-trigger`](examples/codebuild-no-trigger) workflow, or supply a
+> pre-built Amazon ECR image as shown in [`byo-image`](examples/byo-image).
 
 ---
 
 ## ✅ Features
 
-- ✅ **Single required variable** — only `name` is mandatory; every other input has a safe default.
-- 🐳 **Bring Your Own Image (BYO)** — set `create_build_pipeline = false` and pass `image_uri` to skip the CodeBuild pipeline entirely.
+- ✅ **Opt-in root composition** — only `name` is mandatory and a name-only call creates no resources.
+- 🐳 **Bring Your Own Image (BYO)** — enable Runtime and pass a tagged or digest-pinned Amazon ECR `image_uri` without enabling CodeBuild.
 - 🔗 **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
 - ⚙️ **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the AgentCore runtime is not yet needed.
-- �️ **VPC mode** — set `network_mode = "VPC"` and supply `vpc_subnet_ids` / `vpc_security_group_ids` to run the runtime inside your VPC without a public endpoint.
+- 🛡️ **VPC mode** — set `network_mode = "VPC"` and supply `vpc_subnet_ids` / `vpc_security_group_ids` to run the runtime inside your VPC without a public endpoint.
 - 🔐 **JWT authorizer** — set `authorizer_discovery_url` to protect the runtime endpoint with OIDC/JWT auth, scoped by audience and client ID.
 - ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
 - 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
 - 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — use the native `target_configuration` shape for direct Runtime HTTP routing or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets.
-- 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
+- 🔑 **Execution role choice** — explicitly create a role or bring one you manage.
 - 🔒 **Extensible IAM** — append inline statements with `additional_iam_statements` or attach existing managed policies with `additional_iam_policy_arns`.
-- 🛡️ **MMDSv2 enforcement** — requires microVM Metadata Service v2 by default through a temporary `UpdateAgentRuntime` compatibility bridge.
 - 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
 - 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
 - ✅ **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
@@ -57,14 +63,14 @@ AgentCore services remain opt-in. The root module covers the common Runtime, bui
 | Submodule | Capability | Minimums |
 |---|---|---|
 | [`modules/identity`](modules/identity) | Workload identities, write-only API-key/OAuth2 providers, token-vault KMS configuration | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
-| [`modules/policy`](modules/policy) | Policy Engine, caller-owned Cedar policies, resource policies | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/managed-harness`](modules/managed-harness) | Managed Harness models, tools, budgets, storage, truncation, JWT and Memory settings | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/runtime-endpoint`](modules/runtime-endpoint) | Named Runtime Endpoint | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/memory-strategy`](modules/memory-strategy) | Built-in or custom Memory Strategy | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/gateway-target`](modules/gateway-target) | Native general Gateway Target with all provider target, credential, metadata, and private-connectivity variants | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
-| [`modules/gateway-rule`](modules/gateway-rule) | Static/weighted target routes and Configuration Bundle overrides | Terraform/OpenTofu 1.8, AWS Provider 6.61 |
+| [`modules/policy`](modules/policy) | Policy Engine, caller-owned Cedar policies, resource policies | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/managed-harness`](modules/managed-harness) | Managed Harness models, tools, budgets, storage, truncation, JWT and Memory settings | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/runtime-endpoint`](modules/runtime-endpoint) | Named Runtime Endpoint | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/memory-strategy`](modules/memory-strategy) | Built-in or custom Memory Strategy | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/gateway-target`](modules/gateway-target) | Native general Gateway Target with all provider target, credential, metadata, and private-connectivity variants | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/gateway-rule`](modules/gateway-rule) | Static/weighted target routes and Configuration Bundle overrides | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 
 ---
 
@@ -108,7 +114,6 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_iam_role_policy_attachment` | `create_execution_role && attach_bedrock_fullaccess_policy` | Optional `BedrockAgentCoreFullAccess` managed policy attachment. |
 | `aws_iam_role_policy_attachment` (additional) | `create_execution_role && length(additional_iam_policy_arns) > 0` | Attaches caller-supplied managed policies to the execution role. |
 | `aws_bedrockagentcore_agent_runtime` | `create_runtime = true` | The AgentCore runtime that executes your agent container. |
-| `local_sensitive_file` + `terraform_data` | `create_runtime && runtime_metadata_configuration != null` | Applies `metadataConfiguration.requireMMDSV2` with `UpdateAgentRuntime` until the AWS provider supports it natively. |
 | `aws_bedrockagentcore_code_interpreter` | `create_code_interpreter = true` | Isolated managed environment where the agent can execute code. |
 | `aws_iam_role_policy` (Code Interpreter invoke) | `create_runtime && create_code_interpreter && create_execution_role` | Grants the runtime role session access to the created Code Interpreter ARN. |
 | `aws_ecr_repository` + policies | `create_build_pipeline = true` | Private container registry for agent images. |
@@ -139,14 +144,14 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Version |
 |------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.8 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.61 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.61, < 7.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.61 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.61, < 7.0 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules
@@ -308,11 +313,11 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Example | Description |
 |---|---|
-| [examples/basic](examples/basic) | Minimal runtime — one module call with sensible defaults and a working Python agent stub. |
+| [examples/basic](examples/basic) | Explicit build + Runtime composition with a buildable Python agent stub. |
 | [examples/byo-image](examples/byo-image) | Bring Your Own Image — skips the build pipeline and deploys a pre-built image URI. |
 | [examples/codebuild-no-trigger](examples/codebuild-no-trigger) | CodeBuild pipeline provisioned but builds are driven by your own CI/CD, not by `apply`. |
 | [examples/gateway-only](examples/gateway-only) | Standalone general Gateway with AWS IAM inbound auth and no targets. |
-| [examples/gateway-agent-runtime-target](examples/gateway-agent-runtime-target) | General Gateway with one direct AgentCore Runtime `AGENT` target. |
+| [examples/gateway-runtime-target](examples/gateway-runtime-target) | General Gateway with one direct HTTP Runtime target. |
 | [examples/gateway-multiple-targets](examples/gateway-multiple-targets) | Standalone MCP Gateway with multiple MCP targets, including AgentCore Runtime and explicit HTTPS endpoints. |
 | [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP runtime, creates a gateway, and attaches that runtime as a gateway target. |
 | [examples/identity](examples/identity) | Workload identity and write-only API-key/OAuth2 credential providers. |
@@ -329,7 +334,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 ## 🧰 Usage
 
-### Minimal (CodeBuild + runtime)
+### Basic CodeBuild + Runtime
 
 ```hcl
 provider "aws" {
@@ -341,16 +346,22 @@ module "agentcore" {
   version = "~> 1.0"
 
   name = "my-agent"
+
+  create_build_pipeline  = true
+  trigger_build_on_apply = true
+  create_runtime         = true
+  create_execution_role  = true
 }
 ```
 
 Place your agent code (including a `Dockerfile`) in `./agent-code/` relative to where you call the module, then run `terraform apply` (or `tofu apply`). The module zips the directory, uploads it to S3, triggers a CodeBuild build, and provisions the AgentCore runtime.
 
-> ⚠️ **Build trigger prerequisites** — when `trigger_build_on_apply = true` (the default), Terraform / OpenTofu shells out to `scripts/build-image.sh` via `local-exec`. The machine running `apply` must have **AWS CLI v2** installed and a **bash-compatible shell** (Linux, macOS, or WSL on Windows). Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your own CI/CD pipeline using the `codebuild_start_build_command` output.
+> ⚠️ **Build trigger prerequisites** — `trigger_build_on_apply = true` shells
+> out to `scripts/build-image.sh`. The executor needs AWS CLI v2 and bash.
 
 ### Bring Your Own Image
 
-Skip the build pipeline and deploy any container image you have already pushed:
+Skip the build pipeline and deploy an image already pushed to Amazon ECR:
 
 ```hcl
 module "agentcore" {
@@ -359,11 +370,13 @@ module "agentcore" {
 
   name                  = "my-agent"
   create_build_pipeline = false
+  create_runtime        = true
+  create_execution_role = true
   image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 }
 ```
 
-> **Note:** When `create_build_pipeline = false`, the module does not create ECR, S3, or CodeBuild resources and deploys `image_uri` to the runtime as-is. Ensure the execution role has permission to pull from the target registry.
+> **Note:** Ensure the execution role can pull the selected ECR repository.
 
 ### Decouple builds from apply
 
@@ -374,8 +387,11 @@ module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
   version = "~> 1.0"
 
-  name                   = "my-agent"
+  name = "my-agent"
+
+  create_build_pipeline  = true
   trigger_build_on_apply = false
+  create_runtime         = false
 }
 ```
 
@@ -402,9 +418,9 @@ module "agentcore" {
 }
 ```
 
-### Runtime with Code Interpreter
+### Code Interpreter
 
-Enable a custom Code Interpreter alongside the runtime with one flag:
+Enable a custom Code Interpreter and the role it requires:
 
 ```hcl
 module "agentcore" {
@@ -412,11 +428,15 @@ module "agentcore" {
   version = "~> 1.0"
 
   name                    = "analytics-agent"
+  create_execution_role   = true
   create_code_interpreter = true
 }
 ```
 
-The default `SANDBOX` network mode limits external access. The module reuses its AgentCore execution role for the Code Interpreter, grants that role session access to the generated custom ARN, and injects the generated identifier into the runtime as `BEDROCK_AGENTCORE_CODE_INTERPRETER_ID`. Agent code can read that environment variable when starting and invoking Code Interpreter sessions.
+The default `SANDBOX` network mode limits external access. If the same call
+also creates a Runtime, the interpreter identifier is injected as
+`BEDROCK_AGENTCORE_CODE_INTERPRETER_ID` and the created role receives scoped
+session permissions.
 
 Use a dedicated execution role or a different network mode when needed:
 
@@ -435,7 +455,7 @@ module "agentcore" {
 }
 ```
 
-When `create_execution_role = false`, the supplied `execution_role_arn` must allow the Code Interpreter session actions on the custom Code Interpreter ARN. The module cannot modify a caller-managed role.
+The module never mutates a caller-managed Code Interpreter role.
 
 ### Gateway only
 
@@ -531,8 +551,10 @@ module "agentcore" {
 
   name = "my-mcp-datadog"
 
-  create_runtime = true
-  create_gateway = true
+  create_runtime        = true
+  create_execution_role = true
+  create_gateway        = true
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-mcp-datadog:v1.0.0"
 
   server_protocol = "MCP"
 
@@ -598,6 +620,7 @@ module "agentcore" {
   version = "~> 1.0"
 
   name             = "my-agent"
+  create_build_pipeline = true
   agent_source_dir = "${path.root}/src/my-agent"
   image_tag        = "1.2.0"
 }
@@ -614,6 +637,11 @@ module "agentcore" {
   description = "Payments processing agent — production."
   image_tag   = var.release_tag
 
+  create_build_pipeline  = true
+  trigger_build_on_apply = true
+  create_runtime         = true
+  create_execution_role  = true
+
   # Keep the runtime inside the VPC — no public endpoint
   network_mode           = "VPC"
   vpc_subnet_ids         = ["subnet-aaaa1111", "subnet-bbbb2222"]
@@ -625,9 +653,7 @@ module "agentcore" {
   ecr_force_delete            = false
   source_bucket_force_destroy = false
 
-  # Drop the broad managed policy; grant only what the agent needs
-  attach_bedrock_fullaccess_policy = false
-  allow_workload_access_token_for_user_id = false
+  # Broad managed/model permissions remain disabled; grant only what is needed.
   additional_iam_statements = [
     {
       Sid    = "ClaudeAccess"
@@ -667,6 +693,8 @@ module "agentcore" {
 
   name = "inventory-agent"
 
+  create_execution_role = true
+
   additional_iam_policy_arns = [
     "arn:aws:iam::aws:policy/ReadOnlyAccess",
   ]
@@ -685,6 +713,8 @@ module "agentcore" {
   name                  = "my-agent"
   create_execution_role = false
   execution_role_arn    = aws_iam_role.my_agent_role.arn
+  create_runtime        = true
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 }
 ```
 
@@ -696,7 +726,8 @@ Common configurations for organisations with tighter security postures or multi-
 
 ### Least-privilege Bedrock access (disable the wildcard `InvokeModel`)
 
-By default the module includes a baseline `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` against `*` for ease of development. Disable it and grant access only to the specific models your agent calls:
+Wildcard model invocation is disabled by default. Grant access only to the
+specific models your agent calls:
 
 ```hcl
 module "agentcore" {
@@ -705,11 +736,7 @@ module "agentcore" {
 
   name = "payments-agent"
 
-  # Remove the wildcard bedrock:InvokeModel statement from the baseline policy.
-  allow_bedrock_invoke_all = false
-
-  # Drop the broad managed policy too.
-  attach_bedrock_fullaccess_policy = false
+  create_execution_role = true
 
   # Grant access to exactly the models the agent needs.
   additional_iam_statements = [
@@ -740,8 +767,10 @@ module "agentcore" {
 
   name = "shared-agent"
 
+  create_build_pipeline = true
+
   # Grant pull access to specific principals in other accounts.
-  # When empty (default) only the current account root is allowed.
+  # Empty creates no repository policy.
   ecr_pull_principals = [
     "arn:aws:iam::111111111111:root",                       # whole account
     "arn:aws:iam::222222222222:role/ECSTaskExecutionRole",  # specific role
@@ -763,6 +792,8 @@ module "agentcore" {
   name                  = "my-agent"
   create_execution_role = false
   execution_role_arn    = data.aws_iam_role.platform_agent_role.arn
+  create_runtime        = true
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 }
 ```
 
@@ -775,8 +806,10 @@ module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
   version = "~> 1.0"
 
-  name                   = "my-agent"
-  trigger_build_on_apply = false
+  name = "my-agent"
+
+  create_build_pipeline    = true
+  trigger_build_on_apply   = false
   ecr_image_tag_mutability = "IMMUTABLE"  # Enforce image immutability in CI
 }
 ```
@@ -798,6 +831,9 @@ module "agentcore" {
   version = "~> 1.0"
 
   name         = "private-agent"
+  create_runtime        = true
+  create_execution_role = true
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/private-agent:v1.2.3"
   network_mode = "VPC"
 
   vpc_subnet_ids         = data.aws_subnets.private.ids
@@ -816,11 +852,16 @@ module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
   version = "~> 1.0"
 
-  name = "my-agent"
+  name                  = "my-agent"
+  create_runtime        = true
+  create_execution_role = true
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
 
-  authorizer_discovery_url    = "https://accounts.google.com/.well-known/openid-configuration"
-  authorizer_allowed_audience = ["my-agent-api"]
-  authorizer_allowed_clients  = ["client-abc123"]
+  runtime_authorizer_configuration = {
+    discovery_url    = "https://accounts.google.com/.well-known/openid-configuration"
+    allowed_audience = ["my-agent-api"]
+    allowed_clients  = ["client-abc123"]
+  }
 }
 ```
 
@@ -846,14 +887,13 @@ module "agentcore" {
 
 ## 🔒 Security notes
 
-- 🔒 **`BedrockAgentCoreFullAccess` is broad** — it is enabled by default for convenience. Set `attach_bedrock_fullaccess_policy = false` in production and grant only the actions your agent requires via `additional_iam_statements`.
-- 🔒 **Disable the unverified UserId token path when it is not needed** — set `allow_workload_access_token_for_user_id = false`. The module removes the baseline Allow and adds an explicit Deny so `BedrockAgentCoreFullAccess` cannot grant it back.
-- 🛡️ **MMDSv2 is required by default** — `runtime_metadata_configuration.require_mmdsv2` defaults to `true`. The temporary compatibility update uses the AWS credentials of the machine running `apply` and writes its request to a mode-`0600` sensitive file under `.terraform/`.
+- 🔒 **Broad IAM is explicit** — `BedrockAgentCoreFullAccess`, wildcard model invocation, and the UserId workload-token path are all disabled by default.
+- 🔒 **A disabled UserId token path is denied explicitly** — broad caller-supplied managed policies cannot silently re-enable it.
 - 🔒 **Prefer least privilege** — scope `bedrock:InvokeModel` to specific model ARNs and `ecr:BatchGetImage` to specific repository ARNs rather than using `"Resource": "*"`.
 - 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
 - ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
 - 🌐 **Gateway interceptors are Lambda-backed** — each interceptor Lambda receives request or response payloads; apply appropriate resource-based policies and consider VPC isolation for sensitive workloads.
-- 🔑 **Gateway target outbound auth** — MCP runtime and direct `AGENT` targets use the gateway IAM role for outbound auth and receive an invoke policy scoped to both the base runtime ARN and qualifier-specific runtime endpoint ARN.
+- 🔑 **Gateway target outbound auth** — Runtime targets can use caller JWT passthrough or a Gateway IAM role scoped to the selected Runtime and qualifier.
 
 ---
 
@@ -867,34 +907,21 @@ The module expects a `Dockerfile` at the root of the source directory. CodeBuild
 agent_source_dir = "${path.root}/src/my-agent"
 ```
 
-The archive is re-uploaded and CodeBuild is re-triggered automatically whenever any file in the directory changes, based on the MD5 hash of the zip.
+The archive is re-uploaded whenever its content changes. CodeBuild is triggered
+from apply only when `trigger_build_on_apply = true`.
 
 ### ⚙️ Build trigger
 
-When `trigger_build_on_apply = true` (the default), the `modules/build` submodule uses a `null_resource` to call the bundled `scripts/build-image.sh` script via `local-exec`. This requires:
+When `trigger_build_on_apply = true`, the `modules/build` submodule uses a
+`null_resource` to call the bundled `scripts/build-image.sh` script via
+`local-exec`. The flag defaults to `false` and requires:
 
 - **AWS CLI v2** — must be available on the machine running `terraform apply` (or `tofu apply`).
 - **bash** — the build script requires a bash-compatible shell (Linux, macOS, WSL on Windows).
 
-Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your CI/CD pipeline instead.
-
-### 🛡️ Runtime MMDSv2 metadata configuration
-
-Since June 30, 2026, AgentCore rejects invocations of runtimes whose `metadataConfiguration.requireMMDSV2` is missing, false, or null. This module enables it by default:
-
-```hcl
-runtime_metadata_configuration = {
-  require_mmdsv2 = true
-}
-```
-
-The AgentCore `UpdateAgentRuntime` API exposes this setting, but the current `hashicorp/aws` Agent Runtime resource does not. Until native provider support lands, the runtime submodule writes the complete update request to a sensitive JSON file under `.terraform/` and invokes:
-
-```text
-aws bedrock-agentcore-control update-agent-runtime --cli-input-json file://... --region ...
-```
-
-The executor therefore needs AWS CLI v2 with `bedrock-agentcore-control` and `--metadata-configuration` support (v2.35+ recommended), plus `bedrock-agentcore:UpdateAgentRuntime` permission. Set `runtime_metadata_configuration = null` only when another control already applies the setting; doing so disables the compatibility update. See [AWS AgentCore Runtime security best practices](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html), [MMDSv2 ValidationException troubleshooting](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html), and the [UpdateAgentRuntime API](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_UpdateAgentRuntime.html).
+Keep the default `false` to drive builds from CI/CD. The
+[`codebuild-no-trigger`](examples/codebuild-no-trigger) example documents the
+safe two-phase build-then-Runtime flow.
 
 ### 🌐 VPC mode
 
@@ -941,9 +968,14 @@ AgentCore supports ARM64 architecture only. The default CodeBuild image (`amazon
 
 ### 🔒 IAM and `BedrockAgentCoreFullAccess`
 
-The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements` and/or `additional_iam_policy_arns`.
+The `BedrockAgentCoreFullAccess` managed policy is never attached unless
+`attach_bedrock_fullaccess_policy = true`. Prefer exactly the permissions your
+agent needs through `additional_iam_statements` or
+`additional_iam_policy_arns`.
 
-Set `allow_workload_access_token_for_user_id = false` for JWT-only workloads. Because the default managed policy grants `bedrock-agentcore:*`, this option adds an explicit Deny for `GetWorkloadAccessTokenForUserId` in addition to removing the action from the baseline Allow.
+`allow_workload_access_token_for_user_id` defaults to `false`, which adds an
+explicit Deny for `GetWorkloadAccessTokenForUserId`. Enable it only for a
+workload that intentionally uses that identity path.
 
 The module-created execution role receives:
 
@@ -951,7 +983,7 @@ The module-created execution role receives:
 - CloudWatch Logs writes (scoped to `/aws/bedrock-agentcore/runtimes/*`)
 - X-Ray tracing
 - CloudWatch Metrics (scoped to the `bedrock-agentcore` namespace)
-- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` against `*` — narrow this via `additional_iam_statements` if needed
+- no model invocation until the caller supplies model-scoped permissions (or explicitly enables the wildcard convenience flag)
 - AgentCore workload access tokens
 - a separate inline policy for Code Interpreter session actions, scoped to the created custom ARN when both Runtime and Code Interpreter are enabled
 
@@ -963,7 +995,11 @@ The default `code_interpreter_network_mode = "SANDBOX"` provides limited AWS ser
 
 ### 📦 Provider version
 
-The AgentCore resource types were introduced in hashicorp/aws **v6.x**. This module requires **v6.61 or newer**, whose native Gateway Target resource covers HTTP Runtime routing, the complete MCP target family, credentials, metadata propagation, and private connectivity. Runtime `metadata_configuration` is still applied through the documented `UpdateAgentRuntime` compatibility path until the provider exposes it natively.
+The AgentCore resource types were introduced in hashicorp/aws **v6.x**. This
+module requires **v6.61 or newer and lower than v7**, whose native resources
+cover the Runtime, general Gateway Targets, Policy, Identity, Memory, Browser,
+Code Interpreter, Managed Harness, Evaluations, endpoints, strategies, and
+Gateway Rules exposed by this release.
 
 ### 🧩 Using submodules independently
 

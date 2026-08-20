@@ -1,8 +1,10 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
     branches: [main]
+    types: [completed]
 
 # Only one release job runs at a time; extras are queued, not cancelled.
 concurrency:
@@ -19,14 +21,16 @@ jobs:
     name: Semantic Release
     runs-on: ubuntu-latest
 
-    # Skip the automated commit that semantic-release pushes back to main
-    # (it sets the commit message to "chore(release): ... [skip ci]").
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0          # full history for commit-analyzer
           persist-credentials: false
 
