@@ -20,12 +20,50 @@ variable "tags" {
   default     = {}
 }
 
+variable "image_builds" {
+  description = "Opt-in CodeBuild pipelines that package agent source, build an ARM64 container, and publish it to ECR."
+  type = map(object({
+    name                        = optional(string)
+    source_dir                  = string
+    image_tag                   = optional(string, "latest")
+    ecr_repository_name         = optional(string)
+    ecr_image_tag_mutability    = optional(string, "MUTABLE")
+    ecr_scan_on_push            = optional(bool, true)
+    ecr_lifecycle_keep_count    = optional(number, 10)
+    ecr_force_delete            = optional(bool, false)
+    ecr_pull_principals         = optional(list(string), [])
+    source_bucket_force_destroy = optional(bool, false)
+    codebuild_compute_type      = optional(string, "BUILD_GENERAL1_LARGE")
+    codebuild_environment_image = optional(string, "aws/codebuild/amazonlinux2-aarch64-standard:3.0")
+    codebuild_environment_type  = optional(string, "ARM_CONTAINER")
+    codebuild_build_timeout     = optional(number, 60)
+    trigger_build_on_apply      = optional(bool, false)
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for build in values(var.image_builds) :
+      length(trimspace(build.source_dir)) > 0 &&
+      length(trimspace(build.image_tag)) > 0 &&
+      contains(["MUTABLE", "IMMUTABLE"], build.ecr_image_tag_mutability) &&
+      build.ecr_lifecycle_keep_count > 0 &&
+      build.codebuild_build_timeout >= 5 && build.codebuild_build_timeout <= 480 &&
+      contains(["BUILD_GENERAL1_SMALL", "BUILD_GENERAL1_MEDIUM", "BUILD_GENERAL1_LARGE", "BUILD_GENERAL1_XLARGE", "BUILD_GENERAL1_2XLARGE"], build.codebuild_compute_type) &&
+      contains(["LINUX_CONTAINER", "LINUX_GPU_CONTAINER", "ARM_CONTAINER", "WINDOWS_CONTAINER", "WINDOWS_SERVER_2019_CONTAINER"], build.codebuild_environment_type) &&
+      alltrue([for principal in build.ecr_pull_principals : can(regex("^arn:aws[^:]*:", principal))])
+    ])
+    error_message = "Image builds require a source directory, valid ECR and CodeBuild settings, and ARN-formatted pull principals."
+  }
+}
+
 variable "runtimes" {
   description = "AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM_JWT and AWS_IAM cannot be combined."
   type = map(object({
     name                            = optional(string)
     role_arn                        = string
-    image_uri                       = string
+    image_uri                       = optional(string)
+    image_build_key                 = optional(string)
     authentication                  = string
     description                     = optional(string)
     environment_variables           = optional(map(string), {})
@@ -64,11 +102,13 @@ variable "runtimes" {
     condition = alltrue([
       for runtime in values(var.runtimes) :
       contains(["AWS_IAM", "CUSTOM_JWT"], runtime.authentication) &&
+      (runtime.image_uri != null) != (runtime.image_build_key != null) &&
+      (runtime.image_build_key == null || contains(keys(var.image_builds), runtime.image_build_key)) &&
       (runtime.authentication == "CUSTOM_JWT") == (runtime.jwt != null) &&
       (runtime.jwt == null || !(runtime.jwt.allowed_gateway_arn != null && runtime.jwt.allowed_gateway_key != null)) &&
       (runtime.network_mode == "PUBLIC" || (runtime.network_mode == "VPC" && length(runtime.security_groups) > 0 && length(runtime.subnets) > 0))
     ])
-    error_message = "Each runtime must use exactly AWS_IAM or CUSTOM_JWT; JWT config is required only for CUSTOM_JWT, and VPC mode requires subnets and security groups."
+    error_message = "Each runtime must select exactly one image_uri or image_build_key, use exactly AWS_IAM or CUSTOM_JWT, provide JWT config only for CUSTOM_JWT, and provide subnets and security groups in VPC mode."
   }
 }
 

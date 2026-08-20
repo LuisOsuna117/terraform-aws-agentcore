@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [basic, browser, code-interpreter, dual-lane-gateways, identity, memory, observability]
+        example: [basic, browser, code-interpreter, dual-lane-gateways, identity, image-build, memory, observability]
     defaults:
       run:
         working-directory: examples/${{ matrix.example }}

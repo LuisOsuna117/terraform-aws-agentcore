@@ -11,6 +11,23 @@ output "runtimes" {
   }
 }
 
+output "image_builds" {
+  description = "CodeBuild image pipelines and their ECR artifacts keyed by caller key."
+  value = {
+    for key, build in module.image_build : key => {
+      image_uri                     = build.image_uri
+      ecr_repository_url            = build.ecr_repository_url
+      ecr_repository_arn            = build.ecr_repository_arn
+      codebuild_project_name        = build.codebuild_project_name
+      codebuild_project_arn         = build.codebuild_project_arn
+      codebuild_role_arn            = build.codebuild_role_arn
+      source_bucket_name            = build.source_bucket_name
+      source_bucket_arn             = build.source_bucket_arn
+      codebuild_start_build_command = build.codebuild_start_build_command
+    }
+  }
+}
+
 output "runtime_endpoints" {
   description = "Runtime endpoint ARNs keyed by caller key."
   value = { for key, endpoint in aws_bedrockagentcore_agent_runtime_endpoint.this : key => {

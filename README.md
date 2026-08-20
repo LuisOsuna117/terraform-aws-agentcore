@@ -17,6 +17,7 @@ Every capability is opt-in. All resource maps default to `{}`, so providing
 only `name` creates no resources.
 
 - Runtime and immutable Runtime endpoints with `AWS_IAM` or `CUSTOM_JWT` authentication.
+- Opt-in ECR, S3, and CodeBuild image pipelines with CI-driven or apply-time triggers.
 - Gateway targets, path rules, JWT passthrough, IAM credentials, and Policy Engine `ENFORCE` mode.
 - AgentCore Identity workload identities and write-only API key and OAuth2 credential providers.
 - Memory strategies, Browser profiles, Code Interpreter, and Managed Harness environments.
@@ -49,14 +50,16 @@ module "agentcore" {
 }
 ```
 
-The module expects immutable ARM64 images and purpose-built IAM roles. It does
-not build application containers or attach broad managed policies.
+The module expects purpose-built IAM roles. Supply an immutable ARM64
+`image_uri`, or opt into an `image_builds` entry when the module should produce
+the container with CodeBuild. It never attaches broad managed policies.
 
 ## Examples
 
 - [Basic Runtime](examples/basic): one IAM-authenticated Runtime.
 - [Dual-lane Gateways](examples/dual-lane-gateways): separate JWT and IAM Gateway-to-Runtime paths with Policy enforcement.
 - [AgentCore Identity](examples/identity): workload identity and write-only OAuth2 credentials.
+- [Agent image build](examples/image-build): ECR, S3, and CodeBuild without creating a Runtime.
 - [Memory](examples/memory): one Memory and semantic strategy.
 - [Browser](examples/browser): one Browser and reusable Browser Profile.
 - [Code Interpreter](examples/code-interpreter): one no-network sandbox.
@@ -70,13 +73,14 @@ bundles or duplicated `enable_*` flags. A map item's `name` is optional and
 defaults to the root `name` plus its key. Set `create = false` to make the
 entire module a no-op.
 
-The two nested modules are intentionally isolated provider-gap boundaries:
+Nested modules are limited to distinct ownership boundaries:
 
+- `modules/build` owns the optional ECR, S3, IAM, and CodeBuild image supply chain.
 - `modules/preview` accepts caller-owned CloudFormation for AgentCore features not yet available in the AWS provider.
 - `modules/agent-registry-preview` implements shadow-only Agent Registry discovery until a native AWS provider resource is available.
 
-Neither nested module is an authorization source. No other resource is hidden
-behind a one-resource wrapper.
+The preview modules are not authorization sources. Individual AgentCore
+resources are not hidden behind one-resource wrappers.
 
 ## AgentCore Identity
 
@@ -88,6 +92,18 @@ workflow and rotate them by increasing their version input.
 
 Runtime and Gateway workload identity ARNs are also returned in the respective
 module outputs.
+
+## Agent image builds
+
+`image_builds` creates no resources by default. Each entry packages one source
+directory, uploads the content-addressed archive to S3, builds an ARM64 image
+with CodeBuild, and publishes it to its own ECR repository. Builds are driven
+externally by default; set `trigger_build_on_apply = true` only when the
+Terraform executor has Bash and AWS CLI v2.
+
+A Runtime selects exactly one caller-provided `image_uri` or one
+`image_build_key`. This keeps image production independent while allowing an
+opted-in build and Runtime to compose in a single module call.
 
 ## Security
 
@@ -144,6 +160,7 @@ Apache-2.0 Licensed. See [LICENSE](LICENSE).
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_agent_registry_preview"></a> [agent\_registry\_preview](#module\_agent\_registry\_preview) | ./modules/agent-registry-preview | n/a |
+| <a name="module_image_build"></a> [image\_build](#module\_image\_build) | ./modules/build | n/a |
 | <a name="module_preview"></a> [preview](#module\_preview) | ./modules/preview | n/a |
 
 ## Resources
@@ -190,6 +207,7 @@ Apache-2.0 Licensed. See [LICENSE](LICENSE).
 | <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | AgentCore Runtime or MCP-server Gateway targets with one explicit outbound credential mode. | <pre>map(object({<br/>    gateway_key               = string<br/>    name                      = optional(string)<br/>    target_type               = string<br/>    runtime_key               = optional(string)<br/>    runtime_arn               = optional(string)<br/>    qualifier                 = optional(string, "DEFAULT")<br/>    mcp_endpoint              = optional(string)<br/>    mcp_listing_mode          = optional(string)<br/>    credential_mode           = string<br/>    signing_service           = optional(string, "bedrock-agentcore")<br/>    signing_region            = optional(string)<br/>    credential_provider_key   = optional(string)<br/>    credential_provider_arn   = optional(string)<br/>    credential_location       = optional(string, "HEADER")<br/>    credential_parameter_name = optional(string)<br/>    credential_prefix         = optional(string)<br/>    oauth_grant_type          = optional(string)<br/>    oauth_scopes              = optional(set(string), [])<br/>    oauth_default_return_url  = optional(string)<br/>    oauth_custom_parameters   = optional(map(string), {})<br/>    description               = optional(string)<br/>    allowed_query_parameters  = optional(set(string), [])<br/>    allowed_request_headers   = optional(set(string), [])<br/>    allowed_response_headers  = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
 | <a name="input_gateways"></a> [gateways](#input\_gateways) | AgentCore Gateways. An attached policy engine always runs in ENFORCE mode. | <pre>map(object({<br/>    name              = optional(string)<br/>    role_arn          = string<br/>    authentication    = string<br/>    description       = optional(string)<br/>    kms_key_arn       = optional(string)<br/>    exception_level   = optional(string)<br/>    policy_engine_key = optional(string)<br/>    protocol_type     = optional(string)<br/>    jwt = optional(object({<br/>      discovery_url               = string<br/>      allowed_audience            = optional(set(string), [])<br/>      allowed_clients             = optional(set(string), [])<br/>      allowed_scopes              = optional(set(string), [])<br/>      allowed_workload_identities = optional(list(string), [])<br/>      claims = optional(list(object({<br/>        name         = string<br/>        value_type   = string<br/>        operator     = string<br/>        string_value = optional(string)<br/>        string_list  = optional(set(string), [])<br/>      })), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
 | <a name="input_harnesses"></a> [harnesses](#input\_harnesses) | Managed Harness configurations for non-production experimentation without effect tools. | <pre>map(object({<br/>    name                  = optional(string)<br/>    execution_role_arn    = string<br/>    image_uri             = string<br/>    model_id              = string<br/>    system_prompt         = string<br/>    environment_variables = optional(map(string), {})<br/>    network_mode          = optional(string, "PUBLIC")<br/>    security_groups       = optional(set(string), [])<br/>    subnets               = optional(set(string), [])<br/>    require_s3_endpoint   = optional(bool, false)<br/>    idle_timeout_seconds  = optional(number)<br/>    max_lifetime_seconds  = optional(number)<br/>    allowed_tools         = optional(set(string), [])<br/>    max_iterations        = optional(number, 10)<br/>    max_tokens            = optional(number, 8192)<br/>    timeout_seconds       = optional(number, 900)<br/>    temperature           = optional(number, 0)<br/>    top_p                 = optional(number, 1)<br/>  }))</pre> | `{}` | no |
+| <a name="input_image_builds"></a> [image\_builds](#input\_image\_builds) | Opt-in CodeBuild pipelines that package agent source, build an ARM64 container, and publish it to ECR. | <pre>map(object({<br/>    name                        = optional(string)<br/>    source_dir                  = string<br/>    image_tag                   = optional(string, "latest")<br/>    ecr_repository_name         = optional(string)<br/>    ecr_image_tag_mutability    = optional(string, "MUTABLE")<br/>    ecr_scan_on_push            = optional(bool, true)<br/>    ecr_lifecycle_keep_count    = optional(number, 10)<br/>    ecr_force_delete            = optional(bool, false)<br/>    ecr_pull_principals         = optional(list(string), [])<br/>    source_bucket_force_destroy = optional(bool, false)<br/>    codebuild_compute_type      = optional(string, "BUILD_GENERAL1_LARGE")<br/>    codebuild_environment_image = optional(string, "aws/codebuild/amazonlinux2-aarch64-standard:3.0")<br/>    codebuild_environment_type  = optional(string, "ARM_CONTAINER")<br/>    codebuild_build_timeout     = optional(number, 60)<br/>    trigger_build_on_apply      = optional(bool, false)<br/>  }))</pre> | `{}` | no |
 | <a name="input_memories"></a> [memories](#input\_memories) | AgentCore Memory stores. Namespace content is never an authority source. | <pre>map(object({<br/>    name                      = optional(string)<br/>    event_expiry_duration     = number<br/>    description               = optional(string)<br/>    encryption_key_arn        = optional(string)<br/>    memory_execution_role_arn = optional(string)<br/>    indexed_keys = optional(list(object({<br/>      key  = string<br/>      type = string<br/>    })), [])<br/>  }))</pre> | `{}` | no |
 | <a name="input_memory_strategies"></a> [memory\_strategies](#input\_memory\_strategies) | Memory strategies attached to a module-managed Memory. | <pre>map(object({<br/>    memory_key                = string<br/>    name                      = optional(string)<br/>    type                      = string<br/>    description               = optional(string)<br/>    namespaces                = optional(list(string), [])<br/>    namespace_templates       = optional(list(string), [])<br/>    memory_execution_role_arn = optional(string)<br/>  }))</pre> | `{}` | no |
 | <a name="input_name"></a> [name](#input\_name) | Name used as the default prefix for module-managed resources. | `string` | n/a | yes |
@@ -203,7 +221,7 @@ Apache-2.0 Licensed. See [LICENSE](LICENSE).
 | <a name="input_resource_policies"></a> [resource\_policies](#input\_resource\_policies) | Resource policies for runtimes, gateways, and other AgentCore resources. | <pre>map(object({<br/>    resource_arn  = optional(string)<br/>    resource_type = optional(string)<br/>    resource_key  = optional(string)<br/>    policy        = optional(string)<br/>    principals    = optional(set(string), [])<br/>    actions       = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
 | <a name="input_runtime_endpoints"></a> [runtime\_endpoints](#input\_runtime\_endpoints) | Named immutable Runtime endpoints. | <pre>map(object({<br/>    runtime_key     = string<br/>    name            = optional(string)<br/>    description     = optional(string)<br/>    runtime_version = optional(string)<br/>  }))</pre> | `{}` | no |
 | <a name="input_runtime_role_permissions"></a> [runtime\_role\_permissions](#input\_runtime\_role\_permissions) | Least-privilege inline policies attached to caller-owned Runtime roles, with module resource references resolved without cycles. | <pre>map(object({<br/>    runtime_key = string<br/>    statements = list(object({<br/>      sid                    = string<br/>      actions                = set(string)<br/>      resources              = optional(set(string), [])<br/>      gateway_keys           = optional(set(string), [])<br/>      memory_keys            = optional(set(string), [])<br/>      code_interpreter_keys  = optional(set(string), [])<br/>      browser_keys           = optional(set(string), [])<br/>      gateway_parameter_keys = optional(set(string), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_runtimes"></a> [runtimes](#input\_runtimes) | AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM\_JWT and AWS\_IAM cannot be combined. | <pre>map(object({<br/>    name                            = optional(string)<br/>    role_arn                        = string<br/>    image_uri                       = string<br/>    authentication                  = string<br/>    description                     = optional(string)<br/>    environment_variables           = optional(map(string), {})<br/>    gateway_url_environment         = optional(map(string), {})<br/>    memory_id_environment           = optional(map(string), {})<br/>    browser_id_environment          = optional(map(string), {})<br/>    browser_profile_id_environment  = optional(map(string), {})<br/>    code_interpreter_id_environment = optional(map(string), {})<br/>    network_mode                    = optional(string, "PUBLIC")<br/>    security_groups                 = optional(set(string), [])<br/>    subnets                         = optional(set(string), [])<br/>    server_protocol                 = optional(string, "HTTP")<br/>    request_headers                 = optional(set(string), [])<br/>    idle_timeout_seconds            = optional(number, 900)<br/>    max_lifetime_seconds            = optional(number, 28800)<br/>    jwt = optional(object({<br/>      discovery_url               = string<br/>      allowed_audience            = optional(set(string), [])<br/>      allowed_clients             = optional(set(string), [])<br/>      allowed_scopes              = optional(set(string), [])<br/>      allowed_gateway_arn         = optional(string)<br/>      allowed_gateway_key         = optional(string)<br/>      allowed_workload_identities = optional(list(string), [])<br/>      claims = optional(list(object({<br/>        name         = string<br/>        value_type   = string<br/>        operator     = string<br/>        string_value = optional(string)<br/>        string_list  = optional(set(string), [])<br/>      })), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
+| <a name="input_runtimes"></a> [runtimes](#input\_runtimes) | AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM\_JWT and AWS\_IAM cannot be combined. | <pre>map(object({<br/>    name                            = optional(string)<br/>    role_arn                        = string<br/>    image_uri                       = optional(string)<br/>    image_build_key                 = optional(string)<br/>    authentication                  = string<br/>    description                     = optional(string)<br/>    environment_variables           = optional(map(string), {})<br/>    gateway_url_environment         = optional(map(string), {})<br/>    memory_id_environment           = optional(map(string), {})<br/>    browser_id_environment          = optional(map(string), {})<br/>    browser_profile_id_environment  = optional(map(string), {})<br/>    code_interpreter_id_environment = optional(map(string), {})<br/>    network_mode                    = optional(string, "PUBLIC")<br/>    security_groups                 = optional(set(string), [])<br/>    subnets                         = optional(set(string), [])<br/>    server_protocol                 = optional(string, "HTTP")<br/>    request_headers                 = optional(set(string), [])<br/>    idle_timeout_seconds            = optional(number, 900)<br/>    max_lifetime_seconds            = optional(number, 28800)<br/>    jwt = optional(object({<br/>      discovery_url               = string<br/>      allowed_audience            = optional(set(string), [])<br/>      allowed_clients             = optional(set(string), [])<br/>      allowed_scopes              = optional(set(string), [])<br/>      allowed_gateway_arn         = optional(string)<br/>      allowed_gateway_key         = optional(string)<br/>      allowed_workload_identities = optional(list(string), [])<br/>      claims = optional(list(object({<br/>        name         = string<br/>        value_type   = string<br/>        operator     = string<br/>        string_value = optional(string)<br/>        string_list  = optional(set(string), [])<br/>      })), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to every taggable resource. | `map(string)` | `{}` | no |
 | <a name="input_workload_identities"></a> [workload\_identities](#input\_workload\_identities) | AgentCore workload identities for outbound authentication. | <pre>map(object({<br/>    name                      = optional(string)<br/>    allowed_oauth_return_urls = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
 
@@ -221,6 +239,7 @@ Apache-2.0 Licensed. See [LICENSE](LICENSE).
 | <a name="output_gateway_targets"></a> [gateway\_targets](#output\_gateway\_targets) | Gateway target identifiers keyed by caller key. |
 | <a name="output_gateways"></a> [gateways](#output\_gateways) | Gateway identifiers and invocation URLs keyed by caller key. |
 | <a name="output_harnesses"></a> [harnesses](#output\_harnesses) | AgentCore Harness identifiers and ARNs keyed by caller key. |
+| <a name="output_image_builds"></a> [image\_builds](#output\_image\_builds) | CodeBuild image pipelines and their ECR artifacts keyed by caller key. |
 | <a name="output_memories"></a> [memories](#output\_memories) | AgentCore Memory identifiers and ARNs keyed by caller key. |
 | <a name="output_memory_strategies"></a> [memory\_strategies](#output\_memory\_strategies) | AgentCore Memory strategy identifiers keyed by caller key. |
 | <a name="output_oauth2_credential_providers"></a> [oauth2\_credential\_providers](#output\_oauth2\_credential\_providers) | AgentCore OAuth2 credential provider ARNs keyed by caller key. |

@@ -20,7 +20,7 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
 
   agent_runtime_artifact {
     container_configuration {
-      container_uri = each.value.image_uri
+      container_uri = each.value.image_build_key == null ? each.value.image_uri : module.image_build[each.value.image_build_key].image_uri
     }
   }
 

@@ -1,4 +1,30 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "111122223333"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "us-east-1"
+    }
+  }
+
+  mock_resource "aws_ecr_repository" {
+    defaults = {
+      arn            = "arn:aws:ecr:us-east-1:111122223333:repository/image-build-agent"
+      repository_url = "111122223333.dkr.ecr.us-east-1.amazonaws.com/image-build-agent"
+    }
+  }
+
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::111122223333:role/image-build-codebuild"
+      id  = "image-build-codebuild"
+    }
+  }
+
   mock_resource "aws_bedrockagentcore_policy_engine" {
     defaults = {
       policy_engine_id  = "engine-1234567890"
@@ -22,6 +48,16 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "archive" {
+  mock_data "archive_file" {
+    defaults = {
+      output_md5 = "0123456789abcdef0123456789abcdef"
+    }
+  }
+}
+
+mock_provider "null" {}
+
 run "defaults_are_fully_opt_in" {
   command = plan
 
@@ -33,6 +69,7 @@ run "defaults_are_fully_opt_in" {
     condition = alltrue([
       length(output.runtimes) == 0,
       length(output.runtime_endpoints) == 0,
+      length(output.image_builds) == 0,
       length(output.gateways) == 0,
       length(output.gateway_targets) == 0,
       length(output.gateway_rules) == 0,
@@ -55,6 +92,52 @@ run "defaults_are_fully_opt_in" {
       length(output.preview_stacks) == 0,
     ])
     error_message = "Providing only the module name must create no opt-in features."
+  }
+}
+
+run "image_builds_are_opt_in" {
+  command = plan
+
+  variables {
+    name = "image-build"
+
+    image_builds = {
+      agent = {
+        source_dir = "./examples/image-build/agent-code"
+      }
+    }
+  }
+
+  assert {
+    condition     = output.image_builds["agent"].image_uri != null
+    error_message = "An opted-in image build must expose its resulting ECR image URI."
+  }
+}
+
+run "runtime_can_consume_an_opted_in_image_build" {
+  command = plan
+
+  variables {
+    name = "built-runtime"
+
+    image_builds = {
+      agent = {
+        source_dir = "./examples/image-build/agent-code"
+      }
+    }
+
+    runtimes = {
+      primary = {
+        role_arn        = "arn:aws:iam::111122223333:role/built-runtime"
+        image_build_key = "agent"
+        authentication  = "AWS_IAM"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_agent_runtime.this["primary"].agent_runtime_artifact[0].container_configuration[0].container_uri == output.image_builds["agent"].image_uri
+    error_message = "A Runtime image_build_key must resolve to the selected build output."
   }
 }
 
