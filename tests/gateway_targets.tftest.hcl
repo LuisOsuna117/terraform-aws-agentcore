@@ -16,7 +16,7 @@ mock_provider "archive" {}
 mock_provider "null" {}
 mock_provider "time" {}
 
-run "agent_target_uses_general_http_gateway" {
+run "http_runtime_target_uses_general_gateway_configuration" {
   command = plan
 
   variables {
@@ -28,42 +28,68 @@ run "agent_target_uses_general_http_gateway" {
 
     gateway_targets = {
       assistant = {
-        target_type       = "AGENT"
-        agent_runtime_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/Assistant-a1b2c3d4e5"
+        target_configuration = {
+          http = {
+            agentcore_runtime = {
+              arn       = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/Assistant-a1b2c3d4e5"
+              qualifier = "DEFAULT"
+            }
+          }
+        }
+        credential_provider_configuration = {
+          gateway_iam_role = {
+            service = "bedrock-agentcore"
+          }
+        }
       }
     }
   }
 
   assert {
     condition     = output.gateway_protocol_type == null
-    error_message = "An AGENT target must leave the Gateway aggregation protocol unset."
+    error_message = "An HTTP target must leave the Gateway aggregation protocol unset."
   }
 
   assert {
-    condition     = length(output.gateway_agent_target_invocation_urls) == 1
-    error_message = "An AGENT target must be rendered as an HTTP AgentCore Runtime target."
+    condition     = length(output.gateway_target_invocation_urls) == 1
+    error_message = "An HTTP Runtime target must expose its path-routed invocation URL."
   }
 
   assert {
-    condition     = length(output.gateway_target_endpoints) == 0
-    error_message = "An AGENT target must not be rendered as an MCP aggregation target."
+    condition     = length(output.gateway_target_ids) == 1
+    error_message = "A configured Gateway target must be managed by the native target resource."
   }
 }
 
-run "mcp_target_infers_mcp_aggregation" {
+run "mcp_api_gateway_target_infers_aggregation" {
   command = plan
 
   variables {
-    name                  = "mcp-gateway"
+    name                  = "service-gateway"
     create_build_pipeline = false
     create_runtime        = false
-    image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway:test"
+    image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/service-gateway:test"
     create_gateway        = true
 
     gateway_targets = {
-      tools = {
-        target_type = "MCP"
-        endpoint    = "https://tools.example.com/mcp"
+      service_api = {
+        target_configuration = {
+          mcp = {
+            api_gateway = {
+              rest_api_id = "abcdefghij"
+              stage       = "v1"
+              api_gateway_tool_configuration = {
+                tool_filter = [{
+                  filter_path = "/incidents/*"
+                  methods     = ["GET"]
+                }]
+              }
+            }
+          }
+        }
+        credential_provider_configuration = {
+          gateway_iam_role = {}
+        }
       }
     }
   }
@@ -74,12 +100,12 @@ run "mcp_target_infers_mcp_aggregation" {
   }
 
   assert {
-    condition     = length(output.gateway_target_endpoints) == 1
-    error_message = "An MCP target must be rendered as an MCP Gateway target."
+    condition     = length(output.gateway_target_ids) == 1
+    error_message = "The general Gateway target map must support API Gateway targets."
   }
 }
 
-run "self_runtime_defaults_to_agent_target" {
+run "self_runtime_defaults_to_http_target" {
   command = plan
 
   variables {
@@ -91,7 +117,39 @@ run "self_runtime_defaults_to_agent_target" {
   }
 
   assert {
-    condition     = length(output.gateway_agent_target_invocation_urls) == 1
-    error_message = "A default HTTP runtime attached to a general gateway must use an AGENT target."
+    condition     = length(output.gateway_target_invocation_urls) == 1
+    error_message = "A default HTTP runtime attached to a general gateway must use an HTTP target."
+  }
+}
+
+run "jwt_passthrough_does_not_grant_runtime_invoke_to_gateway_role" {
+  command = plan
+
+  module {
+    source = "./modules/gateway"
+  }
+
+  variables {
+    name = "human-gateway"
+
+    targets = {
+      operator = {
+        target_configuration = {
+          http = {
+            agentcore_runtime = {
+              arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/Operator-a1b2c3d4e5"
+            }
+          }
+        }
+        credential_provider_configuration = {
+          jwt_passthrough = true
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy.gateway_invoke_agent_runtime) == 0
+    error_message = "JWT passthrough targets must not grant Runtime invoke permission to the Gateway IAM role."
   }
 }

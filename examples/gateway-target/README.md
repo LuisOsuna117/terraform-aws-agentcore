@@ -1,3 +1,3 @@
 # AgentCore Gateway Target
 
-Creates a native HTTP Runtime target with JWT passthrough. Other credential modes are separate opt-in inputs and compose with outputs from `modules/identity`.
+Creates a native HTTP Runtime target with JWT passthrough through the general `target_configuration` interface. Other target and credential configurations remain opt-in and compose with outputs from `modules/identity`.

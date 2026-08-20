@@ -22,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
@@ -62,9 +62,9 @@ jobs:
           - examples/gateway-rule
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
@@ -82,9 +82,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.11.2"
           tofu_wrapper: false
@@ -125,9 +125,9 @@ jobs:
           - examples/gateway-rule
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
@@ -150,7 +150,7 @@ jobs:
       security-events: write   # upload SARIF to GitHub Code Scanning
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run Trivy (IaC)
         uses: aquasecurity/trivy-action@v0.36.0
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
 
@@ -194,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # terraform-docs needs write-access to check diff; grant fetch only.
           ref: ${{ github.head_ref }}
@@ -202,7 +202,7 @@ jobs:
       - name: Check terraform-docs drift
         uses: terraform-docs/gh-actions@v1
         with:
-          working-dir: .
+          working-dir: .,modules/browser,modules/evaluation,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory-strategy,modules/policy,modules/runtime-endpoint
           output-file: README.md
           output-method: inject
           git-push: "false"
@@ -217,9 +217,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "lts/*"
 

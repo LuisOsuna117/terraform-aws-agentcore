@@ -15,7 +15,7 @@ module "agentcore" {
   source = "../.."
   # Uncomment once published to the registry:
   # source  = "LuisOsuna117/agentcore/aws"
-  # version = "~> 0.4"
+  # version = "~> 1.0"
 
   name = var.name
 

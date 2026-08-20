@@ -1,14 +1,4 @@
-# ==============================================================================
-# Data Sources
-# ==============================================================================
-
 data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
-data "aws_region" "current" {}
-
-# ==============================================================================
-# IAM — Gateway Role (optional)
-# ==============================================================================
 
 resource "aws_iam_role" "gateway" {
   count = var.create_role ? 1 : 0
@@ -39,137 +29,39 @@ locals {
   role_arn  = var.create_role ? aws_iam_role.gateway[0].arn : var.role_arn
   role_name = var.create_role ? aws_iam_role.gateway[0].name : (var.role_arn != null ? element(reverse(split("/", var.role_arn)), 0) : null)
 
-  legacy_mcp_targets = {
-    for key, target in var.mcp_targets : key => {
-      target_type              = "MCP"
-      name                     = target.name
-      description              = target.description
-      endpoint                 = target.endpoint
-      agent_runtime_arn        = target.agent_runtime_arn
-      qualifier                = target.qualifier
-      schema                   = null
-      allowed_query_parameters = target.allowed_query_parameters
-      allowed_request_headers  = target.allowed_request_headers
-      allowed_response_headers = target.allowed_response_headers
-    }
-  }
-
-  all_targets = merge(local.legacy_mcp_targets, {
-    for key, target in var.targets : key => {
-      target_type              = upper(target.target_type)
-      name                     = target.name
-      description              = target.description
-      endpoint                 = target.endpoint
-      agent_runtime_arn        = target.agent_runtime_arn
-      qualifier                = target.qualifier
-      schema                   = target.schema
-      allowed_query_parameters = target.allowed_query_parameters
-      allowed_request_headers  = target.allowed_request_headers
-      allowed_response_headers = target.allowed_response_headers
-    }
-  })
-
   mcp_targets = {
-    for key, target in local.all_targets : key => target
-    if target.target_type == "MCP"
+    for key, target in var.targets : key => target
+    if try(target.target_configuration.mcp, null) != null
   }
 
-  agent_targets = {
-    for key, target in local.all_targets : key => target
-    if target.target_type == "AGENT"
+  http_targets = {
+    for key, target in var.targets : key => target
+    if try(target.target_configuration.http, null) != null
   }
 
   effective_protocol_type = var.protocol_type != null ? var.protocol_type : (length(local.mcp_targets) > 0 ? "MCP" : null)
 
-  inferred_agent_runtime_target_keys = toset([
-    for key, target in local.mcp_targets : key
-    if try(trimspace(target.endpoint), "") == ""
-  ])
-
-  mcp_agent_runtime_target_keys = var.agent_runtime_target_keys == null ? local.inferred_agent_runtime_target_keys : var.agent_runtime_target_keys
-
-  mcp_agent_runtime_targets = {
-    for key, target in local.mcp_targets : key => target
-    if contains(local.mcp_agent_runtime_target_keys, key)
-  }
-
-  agent_runtime_targets     = merge(local.mcp_agent_runtime_targets, local.agent_targets)
-  agent_runtime_target_keys = toset(keys(local.agent_runtime_targets))
-
-  runtime_arn_parts = {
-    for key, target in local.agent_runtime_targets : key => split(":", target.agent_runtime_arn)
-  }
-
-  runtime_resource_parts = {
-    for key, parts in local.runtime_arn_parts : key => split("/", join(":", slice(parts, 5, length(parts))))
-  }
-
-  runtime_resource_ids = {
-    for key, parts in local.runtime_resource_parts : key => element(parts, 1)
-  }
-
-  runtime_ids = {
-    for key, runtime_resource_id in local.runtime_resource_ids : key => element(split(":", runtime_resource_id), 0)
-  }
-
-  runtime_account_ids = {
-    for key, parts in local.runtime_arn_parts : key => parts[4]
-  }
-
-  runtime_endpoint_arns = [
-    for target in values(local.agent_runtime_targets) :
-    "${target.agent_runtime_arn}/runtime-endpoint/${coalesce(target.qualifier, "DEFAULT")}"
-  ]
-
-  mcp_target_endpoints = merge(
-    {
-      for key, target in local.mcp_targets : key => trimspace(target.endpoint)
-      if try(trimspace(target.endpoint), "") != ""
-    },
-    {
-      for key, target in local.mcp_agent_runtime_targets : key => format(
-        "https://bedrock-agentcore.%s.%s/runtimes/%s/invocations?qualifier=%s&accountId=%s",
-        data.aws_region.current.region,
-        data.aws_partition.current.dns_suffix,
-        urlencode(local.runtime_ids[key]),
-        urlencode(coalesce(target.qualifier, "DEFAULT")),
-        local.runtime_account_ids[key],
-      )
-    },
-  )
-
   raw_target_names = {
-    for key, target in local.all_targets : key => substr(replace(coalesce(target.name, key), "/[^0-9A-Za-z-]/", "-"), 0, 93)
+    for key, target in var.targets : key => substr(replace(coalesce(try(target.name, null), key), "/[^0-9A-Za-z-]/", "-"), 0, 93)
   }
 
   target_names = {
     for key, name in local.raw_target_names : key => can(regex("^[0-9A-Za-z]", name)) ? name : "target-${name}"
   }
 
-  target_metadata = {
-    for key, target in local.all_targets : key => merge(
-      length(target.allowed_query_parameters) > 0 ? { AllowedQueryParameters = target.allowed_query_parameters } : {},
-      length(target.allowed_request_headers) > 0 ? { AllowedRequestHeaders = target.allowed_request_headers } : {},
-      length(target.allowed_response_headers) > 0 ? { AllowedResponseHeaders = target.allowed_response_headers } : {},
-    )
-  }
+  inferred_runtime_invoke_arns = toset([
+    for target in values(local.http_targets) : target.target_configuration.http.agentcore_runtime.arn
+    if try(target.credential_provider_configuration.gateway_iam_role, null) != null
+  ])
 
-  target_stack_name_parts = {
-    for key in keys(local.all_targets) : key => {
-      name = substr(replace(var.name, "/[^0-9A-Za-z-]/", "-"), 0, 60)
-      key  = substr(replace(key, "/[^0-9A-Za-z-]/", "-"), 0, 32)
-      hash = substr(sha1(key), 0, 8)
-    }
-  }
-
-  target_stack_names = {
-    for key, parts in local.target_stack_name_parts : key => substr("agentcore-${parts.name}-${parts.key}-${parts.hash}-target", 0, 128)
-  }
+  runtime_invoke_arns = setunion(var.runtime_invoke_arns, local.inferred_runtime_invoke_arns)
+  runtime_invoke_resources = toset(flatten([
+    for arn in local.runtime_invoke_arns : [
+      arn,
+      "${arn}/runtime-endpoint/*",
+    ]
+  ]))
 }
-
-# ==============================================================================
-# Cross-variable Validations
-# ==============================================================================
 
 resource "terraform_data" "validations" {
   lifecycle {
@@ -179,50 +71,31 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = alltrue([for name in values(local.target_names) : can(regex("^([0-9a-zA-Z][-]?){1,100}$", name))])
-      error_message = "Each target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
-    }
-
-    precondition {
       condition     = length(distinct(values(local.target_names))) == length(local.target_names)
-      error_message = "Each Gateway target must resolve to a unique name."
+      error_message = "Each Gateway Target must resolve to a unique name."
     }
 
     precondition {
-      condition     = var.agent_runtime_target_keys == null || length(setsubtract(var.agent_runtime_target_keys, toset(keys(local.mcp_targets)))) == 0
-      error_message = "agent_runtime_target_keys must only contain MCP target keys."
+      condition     = !(length(local.mcp_targets) > 0 && length(local.http_targets) > 0)
+      error_message = "A Gateway cannot mix MCP aggregation targets and direct HTTP targets. Use separate Gateways."
     }
 
     precondition {
-      condition     = length(setintersection(toset(keys(var.targets)), toset(keys(var.mcp_targets)))) == 0
-      error_message = "targets and the deprecated mcp_targets alias must not use the same map key."
-    }
-
-    precondition {
-      condition     = !(length(local.mcp_targets) > 0 && length(local.agent_targets) > 0)
-      error_message = "A gateway cannot mix MCP aggregation targets and AGENT HTTP targets. Use separate gateways."
-    }
-
-    precondition {
-      condition     = length(local.agent_targets) == 0 || local.effective_protocol_type == null
-      error_message = "AGENT targets require protocol_type = null."
+      condition     = length(local.http_targets) == 0 || local.effective_protocol_type == null
+      error_message = "Direct HTTP targets require protocol_type = null."
     }
 
     precondition {
       condition     = length(local.mcp_targets) == 0 || local.effective_protocol_type == "MCP"
-      error_message = "MCP targets require protocol_type = \"MCP\" (it is inferred when protocol_type is null)."
+      error_message = "MCP targets require protocol_type = \"MCP\"; it is inferred when protocol_type is null."
     }
 
     precondition {
       condition     = var.protocol_configuration == null || local.effective_protocol_type == "MCP"
-      error_message = "protocol_configuration is only valid for an MCP gateway."
+      error_message = "protocol_configuration is only valid for an MCP Gateway."
     }
   }
 }
-
-# ==============================================================================
-# Gateway
-# ==============================================================================
 
 resource "aws_bedrockagentcore_gateway" "this" {
   name     = var.name
@@ -234,7 +107,6 @@ resource "aws_bedrockagentcore_gateway" "this" {
   exception_level = var.exception_level
   kms_key_arn     = var.kms_key_arn
 
-  # JWT authorizer — only included when authorizer_type = "CUSTOM_JWT"
   dynamic "authorizer_configuration" {
     for_each = var.authorizer_type == "CUSTOM_JWT" && var.authorizer_configuration != null ? [var.authorizer_configuration] : []
     content {
@@ -246,9 +118,8 @@ resource "aws_bedrockagentcore_gateway" "this" {
     }
   }
 
-  # MCP protocol configuration — only included when protocol_configuration is set
   dynamic "protocol_configuration" {
-    for_each = var.protocol_configuration != null ? [var.protocol_configuration] : []
+    for_each = var.protocol_configuration == null ? [] : [var.protocol_configuration]
     content {
       mcp {
         instructions       = protocol_configuration.value.instructions
@@ -258,7 +129,6 @@ resource "aws_bedrockagentcore_gateway" "this" {
     }
   }
 
-  # Interceptors — 0 to 2 entries
   dynamic "interceptor_configuration" {
     for_each = var.interceptor_configurations
     content {
@@ -284,187 +154,46 @@ resource "aws_bedrockagentcore_gateway" "this" {
   depends_on = [terraform_data.validations]
 }
 
-# ==============================================================================
-# Gateway Target Runtime Invoke Policy
-# ==============================================================================
-
 resource "aws_iam_role_policy" "gateway_invoke_agent_runtime" {
-  count = length(local.agent_runtime_target_keys) > 0 ? 1 : 0
+  count = length(local.runtime_invoke_resources) > 0 ? 1 : 0
 
   name = "${var.name}-invoke-agent-runtime"
   role = local.role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "InvokeAgentCoreRuntimeTargets"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:InvokeAgentRuntime",
-        ]
-        Resource = concat(
-          [for target in values(local.agent_runtime_targets) : target.agent_runtime_arn],
-          local.runtime_endpoint_arns,
-        )
-      },
-    ]
+    Statement = [{
+      Sid      = "InvokeAgentCoreRuntimeTargets"
+      Effect   = "Allow"
+      Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
+      Resource = local.runtime_invoke_resources
+    }]
   })
 
   depends_on = [terraform_data.validations]
 }
 
 resource "time_sleep" "gateway_invoke_policy_propagation" {
-  count = length(local.agent_runtime_target_keys) > 0 ? 1 : 0
+  count = length(local.runtime_invoke_resources) > 0 ? 1 : 0
 
   create_duration = "45s"
 
-  depends_on = [
-    aws_iam_role_policy.gateway_invoke_agent_runtime,
-  ]
+  depends_on = [aws_iam_role_policy.gateway_invoke_agent_runtime]
 }
 
-# ==============================================================================
-# Gateway Targets
-#
-# The Terraform AWS provider currently exposes a gateway_iam_role block without
-# the Service/Region SigV4 shape required by AgentCore Runtime MCP targets.
-# CloudFormation supports that full shape, so target creation stays encapsulated
-# here while callers use normal module inputs.
-# ==============================================================================
+module "target" {
+  source   = "../gateway-target"
+  for_each = var.targets
 
-resource "aws_cloudformation_stack" "gateway_target" {
-  for_each = local.mcp_targets
+  gateway_identifier                = aws_bedrockagentcore_gateway.this.gateway_id
+  name                              = local.target_names[each.key]
+  description                       = try(each.value.description, null)
+  region                            = try(each.value.region, null)
+  target_configuration              = each.value.target_configuration
+  credential_provider_configuration = try(each.value.credential_provider_configuration, null)
+  metadata_configuration            = try(each.value.metadata_configuration, null)
+  private_endpoint                  = try(each.value.private_endpoint, null)
+  timeouts                          = try(each.value.timeouts, null)
 
-  name               = local.target_stack_names[each.key]
-  timeout_in_minutes = 30
-
-  template_body = jsonencode({
-    AWSTemplateFormatVersion = "2010-09-09"
-    Description              = "AgentCore Gateway target managed by terraform-aws-agentcore."
-    Resources = {
-      GatewayTarget = {
-        Type = "AWS::BedrockAgentCore::GatewayTarget"
-        Properties = merge(
-          {
-            GatewayIdentifier = aws_bedrockagentcore_gateway.this.gateway_id
-            Name              = local.target_names[each.key]
-            TargetConfiguration = {
-              Mcp = {
-                McpServer = {
-                  Endpoint = local.mcp_target_endpoints[each.key]
-                }
-              }
-            }
-          },
-          try(trimspace(each.value.description), "") != "" ? { Description = trimspace(each.value.description) } : {},
-          contains(keys(local.mcp_agent_runtime_targets), each.key) ? {
-            CredentialProviderConfigurations = [
-              {
-                CredentialProviderType = "GATEWAY_IAM_ROLE"
-                CredentialProvider = {
-                  IamCredentialProvider = {
-                    Service = "bedrock-agentcore"
-                    Region  = data.aws_region.current.region
-                  }
-                }
-              },
-            ]
-          } : {},
-          length(local.target_metadata[each.key]) > 0 ? { MetadataConfiguration = local.target_metadata[each.key] } : {},
-        )
-      }
-    }
-    Outputs = {
-      TargetId = {
-        Value = {
-          "Fn::GetAtt" = ["GatewayTarget", "TargetId"]
-        }
-      }
-    }
-  })
-
-  tags = var.tags
-
-  depends_on = [
-    aws_bedrockagentcore_gateway.this,
-    aws_iam_role_policy.gateway_invoke_agent_runtime,
-    time_sleep.gateway_invoke_policy_propagation,
-    terraform_data.validations,
-  ]
-}
-
-# Agent targets route requests directly to an AgentCore Runtime without MCP
-# aggregation. Their parent gateway intentionally has no protocol_type.
-resource "aws_cloudformation_stack" "agent_gateway_target" {
-  for_each = local.agent_targets
-
-  name               = local.target_stack_names[each.key]
-  timeout_in_minutes = 30
-
-  template_body = jsonencode({
-    AWSTemplateFormatVersion = "2010-09-09"
-    Description              = "AgentCore Gateway agent target managed by terraform-aws-agentcore."
-    Resources = {
-      GatewayTarget = {
-        Type = "AWS::BedrockAgentCore::GatewayTarget"
-        Properties = merge(
-          {
-            GatewayIdentifier = aws_bedrockagentcore_gateway.this.gateway_id
-            Name              = local.target_names[each.key]
-            TargetConfiguration = {
-              Http = {
-                AgentcoreRuntime = merge(
-                  {
-                    Arn       = trimspace(each.value.agent_runtime_arn)
-                    Qualifier = coalesce(each.value.qualifier, "DEFAULT")
-                  },
-                  each.value.schema != null ? {
-                    Schema = {
-                      Source = merge(
-                        try(trimspace(each.value.schema.inline_payload), "") != "" ? {
-                          InlinePayload = each.value.schema.inline_payload
-                        } : {},
-                        try(each.value.schema.s3, null) != null ? {
-                          S3 = merge(
-                            { Uri = each.value.schema.s3.uri },
-                            try(trimspace(each.value.schema.s3.bucket_owner_account_id), "") != "" ? {
-                              BucketOwnerAccountId = each.value.schema.s3.bucket_owner_account_id
-                            } : {},
-                          )
-                        } : {},
-                      )
-                    }
-                  } : {},
-                )
-              }
-            }
-            CredentialProviderConfigurations = [
-              {
-                CredentialProviderType = "GATEWAY_IAM_ROLE"
-              },
-            ]
-          },
-          try(trimspace(each.value.description), "") != "" ? { Description = trimspace(each.value.description) } : {},
-          length(local.target_metadata[each.key]) > 0 ? { MetadataConfiguration = local.target_metadata[each.key] } : {},
-        )
-      }
-    }
-    Outputs = {
-      TargetId = {
-        Value = {
-          "Fn::GetAtt" = ["GatewayTarget", "TargetId"]
-        }
-      }
-    }
-  })
-
-  tags = var.tags
-
-  depends_on = [
-    aws_bedrockagentcore_gateway.this,
-    aws_iam_role_policy.gateway_invoke_agent_runtime,
-    time_sleep.gateway_invoke_policy_propagation,
-    terraform_data.validations,
-  ]
+  depends_on = [time_sleep.gateway_invoke_policy_propagation]
 }

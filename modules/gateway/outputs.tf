@@ -29,21 +29,13 @@ output "workload_identity_arn" {
 
 output "gateway_target_ids" {
   description = "Map of target keys to AgentCore Gateway target IDs."
-  value = merge(
-    { for key, stack in aws_cloudformation_stack.gateway_target : key => try(stack.outputs["TargetId"], null) },
-    { for key, stack in aws_cloudformation_stack.agent_gateway_target : key => try(stack.outputs["TargetId"], null) },
-  )
+  value       = { for key, target in module.target : key => target.target_id }
 }
 
-output "gateway_target_endpoints" {
-  description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets."
-  value       = local.mcp_target_endpoints
-}
-
-output "gateway_agent_target_invocation_urls" {
-  description = "Map of AGENT target keys to their path-routed Gateway invocation URLs."
+output "gateway_target_invocation_urls" {
+  description = "Map of direct HTTP target keys to their path-routed Gateway invocation URLs."
   value = {
-    for key in keys(local.agent_targets) :
+    for key in keys(local.http_targets) :
     key => "${trimsuffix(aws_bedrockagentcore_gateway.this.gateway_url, "/")}/${local.target_names[key]}/invocations"
   }
 }

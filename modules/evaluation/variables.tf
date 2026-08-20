@@ -56,10 +56,12 @@ variable "online_evaluations" {
     condition = alltrue([
       for config in values(var.online_evaluations) : (
         length(config.evaluator_keys) + length(config.evaluator_ids) > 0 &&
-        config.sampling_percentage >= 0 && config.sampling_percentage <= 100
+        config.sampling_percentage >= 0.01 && config.sampling_percentage <= 100 &&
+        config.session_timeout_minutes >= 1 && config.session_timeout_minutes <= 60 &&
+        floor(config.session_timeout_minutes) == config.session_timeout_minutes
       )
     ])
-    error_message = "Each online evaluation requires at least one evaluator and sampling_percentage between 0 and 100."
+    error_message = "Each online evaluation requires at least one evaluator, sampling_percentage between 0.01 and 100, and an integer session_timeout_minutes between 1 and 60."
   }
 }
 

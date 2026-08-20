@@ -14,132 +14,231 @@ variable "description" {
   default     = null
 }
 
-variable "target_type" {
-  description = "Target type: HTTP_RUNTIME or MCP_SERVER."
+variable "region" {
+  description = "AWS Region in which to manage the Gateway Target. Defaults to the provider Region."
   type        = string
-  default     = "HTTP_RUNTIME"
+  default     = null
+}
+
+variable "target_configuration" {
+  description = "Target configuration. Set exactly one of http or mcp; MCP supports API Gateway, Lambda, MCP Server, OpenAPI, or Smithy targets."
+  type = object({
+    http = optional(object({
+      agentcore_runtime = object({
+        arn       = string
+        qualifier = optional(string)
+      })
+    }))
+    mcp = optional(object({
+      api_gateway = optional(object({
+        rest_api_id = string
+        stage       = string
+        api_gateway_tool_configuration = object({
+          tool_filter = optional(set(object({
+            filter_path = string
+            methods     = set(string)
+          })), [])
+          tool_override = optional(set(object({
+            path        = string
+            method      = string
+            name        = optional(string)
+            description = optional(string)
+          })), [])
+        })
+      }))
+      lambda = optional(object({
+        lambda_arn = string
+        tool_schema = object({
+          inline_payload = optional(object({
+            name          = string
+            description   = string
+            input_schema  = any
+            output_schema = optional(any)
+          }))
+          s3 = optional(object({
+            uri                     = optional(string)
+            bucket_owner_account_id = optional(string)
+          }))
+        })
+      }))
+      mcp_server = optional(object({
+        endpoint          = string
+        listing_mode      = optional(string)
+        resource_priority = optional(number)
+        mcp_tool_schema = optional(object({
+          inline_payload = optional(object({
+            payload = string
+          }))
+          s3 = optional(object({
+            uri                     = string
+            bucket_owner_account_id = optional(string)
+          }))
+        }))
+      }))
+      open_api_schema = optional(object({
+        inline_payload = optional(object({
+          payload = string
+        }))
+        s3 = optional(object({
+          uri                     = optional(string)
+          bucket_owner_account_id = optional(string)
+        }))
+      }))
+      smithy_model = optional(object({
+        inline_payload = optional(object({
+          payload = string
+        }))
+        s3 = optional(object({
+          uri                     = optional(string)
+          bucket_owner_account_id = optional(string)
+        }))
+      }))
+    }))
+  })
 
   validation {
-    condition     = contains(["HTTP_RUNTIME", "MCP_SERVER"], var.target_type)
-    error_message = "target_type must be HTTP_RUNTIME or MCP_SERVER."
+    condition = length(compact([
+      var.target_configuration.http == null ? "" : "http",
+      var.target_configuration.mcp == null ? "" : "mcp",
+    ])) == 1
+    error_message = "target_configuration must set exactly one of http or mcp."
+  }
+
+  validation {
+    condition = var.target_configuration.mcp == null || length(compact([
+      try(var.target_configuration.mcp.api_gateway, null) == null ? "" : "api_gateway",
+      try(var.target_configuration.mcp.lambda, null) == null ? "" : "lambda",
+      try(var.target_configuration.mcp.mcp_server, null) == null ? "" : "mcp_server",
+      try(var.target_configuration.mcp.open_api_schema, null) == null ? "" : "open_api_schema",
+      try(var.target_configuration.mcp.smithy_model, null) == null ? "" : "smithy_model",
+    ])) == 1
+    error_message = "target_configuration.mcp must set exactly one target: api_gateway, lambda, mcp_server, open_api_schema, or smithy_model."
+  }
+
+  validation {
+    condition = try(var.target_configuration.mcp.lambda, null) == null || length(compact([
+      try(var.target_configuration.mcp.lambda.tool_schema.inline_payload, null) == null ? "" : "inline_payload",
+      try(var.target_configuration.mcp.lambda.tool_schema.s3, null) == null ? "" : "s3",
+    ])) == 1
+    error_message = "A Lambda tool_schema must set exactly one of inline_payload or s3."
+  }
+
+  validation {
+    condition = try(var.target_configuration.mcp.mcp_server.mcp_tool_schema, null) == null || length(compact([
+      try(var.target_configuration.mcp.mcp_server.mcp_tool_schema.inline_payload, null) == null ? "" : "inline_payload",
+      try(var.target_configuration.mcp.mcp_server.mcp_tool_schema.s3, null) == null ? "" : "s3",
+    ])) == 1
+    error_message = "An MCP Server mcp_tool_schema must set exactly one of inline_payload or s3."
+  }
+
+  validation {
+    condition = try(var.target_configuration.mcp.open_api_schema, null) == null || length(compact([
+      try(var.target_configuration.mcp.open_api_schema.inline_payload, null) == null ? "" : "inline_payload",
+      try(var.target_configuration.mcp.open_api_schema.s3, null) == null ? "" : "s3",
+    ])) == 1
+    error_message = "An OpenAPI target must set exactly one of inline_payload or s3."
+  }
+
+  validation {
+    condition = try(var.target_configuration.mcp.smithy_model, null) == null || length(compact([
+      try(var.target_configuration.mcp.smithy_model.inline_payload, null) == null ? "" : "inline_payload",
+      try(var.target_configuration.mcp.smithy_model.s3, null) == null ? "" : "s3",
+    ])) == 1
+    error_message = "A Smithy target must set exactly one of inline_payload or s3."
   }
 }
 
-variable "runtime_arn" {
-  description = "AgentCore Runtime ARN used by an HTTP_RUNTIME target."
-  type        = string
-  default     = null
-}
-
-variable "runtime_qualifier" {
-  description = "Runtime qualifier used by an HTTP_RUNTIME target."
-  type        = string
-  default     = "DEFAULT"
-}
-
-variable "mcp_endpoint" {
-  description = "HTTPS MCP server endpoint used by an MCP_SERVER target."
-  type        = string
-  default     = null
-}
-
-variable "mcp_listing_mode" {
-  description = "MCP server tool-listing mode."
-  type        = string
-  default     = null
-}
-
-variable "credential_mode" {
-  description = "Outbound credential mode."
-  type        = string
-  default     = "GATEWAY_IAM_ROLE"
+variable "credential_provider_configuration" {
+  description = "Optional outbound credential configuration. Omit for targets that explicitly support anonymous access."
+  type = object({
+    api_key = optional(object({
+      provider_arn              = string
+      credential_location       = optional(string)
+      credential_parameter_name = optional(string)
+      credential_prefix         = optional(string)
+    }))
+    caller_iam_credentials = optional(object({
+      service = string
+      region  = optional(string)
+    }))
+    gateway_iam_role = optional(object({
+      service = optional(string)
+      region  = optional(string)
+    }))
+    jwt_passthrough = optional(bool, false)
+    oauth = optional(object({
+      provider_arn       = string
+      grant_type         = optional(string)
+      scopes             = set(string)
+      default_return_url = optional(string)
+      custom_parameters  = optional(map(string), {})
+    }))
+  })
+  default = null
 
   validation {
-    condition = contains([
-      "JWT_PASSTHROUGH",
-      "GATEWAY_IAM_ROLE",
-      "CALLER_IAM_CREDENTIALS",
-      "API_KEY",
-      "OAUTH",
-    ], var.credential_mode)
-    error_message = "credential_mode must be a supported native Gateway credential mode."
+    condition = var.credential_provider_configuration == null || length(compact([
+      try(var.credential_provider_configuration.api_key, null) == null ? "" : "api_key",
+      try(var.credential_provider_configuration.caller_iam_credentials, null) == null ? "" : "caller_iam_credentials",
+      try(var.credential_provider_configuration.gateway_iam_role, null) == null ? "" : "gateway_iam_role",
+      try(var.credential_provider_configuration.jwt_passthrough, false) ? "jwt_passthrough" : "",
+      try(var.credential_provider_configuration.oauth, null) == null ? "" : "oauth",
+    ])) == 1
+    error_message = "credential_provider_configuration must set exactly one credential provider."
   }
 }
 
-variable "signing_service" {
-  description = "SigV4 service used by IAM credential modes."
-  type        = string
-  default     = null
+variable "metadata_configuration" {
+  description = "Optional HTTP header and query parameter propagation configuration."
+  type = object({
+    allowed_query_parameters = optional(set(string), [])
+    allowed_request_headers  = optional(set(string), [])
+    allowed_response_headers = optional(set(string), [])
+  })
+  default = null
+
+  validation {
+    condition = var.metadata_configuration == null || alltrue([
+      length(var.metadata_configuration.allowed_query_parameters) <= 10,
+      length(var.metadata_configuration.allowed_request_headers) <= 10,
+      length(var.metadata_configuration.allowed_response_headers) <= 10,
+    ])
+    error_message = "Each metadata propagation set supports at most 10 values."
+  }
 }
 
-variable "signing_region" {
-  description = "SigV4 Region used by IAM credential modes."
-  type        = string
-  default     = null
+variable "private_endpoint" {
+  description = "Optional private connectivity through an AWS-managed VPC resource or an existing VPC Lattice resource configuration."
+  type = object({
+    managed_vpc_resource = optional(object({
+      vpc_identifier           = string
+      subnet_ids               = set(string)
+      endpoint_ip_address_type = string
+      security_group_ids       = optional(set(string), [])
+      routing_domain           = optional(string)
+      tags                     = optional(map(string), {})
+    }))
+    self_managed_lattice_resource = optional(object({
+      resource_configuration_identifier = string
+    }))
+  })
+  default = null
+
+  validation {
+    condition = var.private_endpoint == null || length(compact([
+      try(var.private_endpoint.managed_vpc_resource, null) == null ? "" : "managed_vpc_resource",
+      try(var.private_endpoint.self_managed_lattice_resource, null) == null ? "" : "self_managed_lattice_resource",
+    ])) == 1
+    error_message = "private_endpoint must set exactly one of managed_vpc_resource or self_managed_lattice_resource."
+  }
 }
 
-variable "credential_provider_arn" {
-  description = "AgentCore Identity credential provider ARN used by API_KEY or OAUTH."
-  type        = string
-  default     = null
-}
-
-variable "api_key_location" {
-  description = "API key credential location."
-  type        = string
-  default     = null
-}
-
-variable "api_key_parameter_name" {
-  description = "Header or query parameter name for API key credentials."
-  type        = string
-  default     = null
-}
-
-variable "api_key_prefix" {
-  description = "Optional prefix added to the API key."
-  type        = string
-  default     = null
-}
-
-variable "oauth_grant_type" {
-  description = "OAuth2 grant type."
-  type        = string
-  default     = null
-}
-
-variable "oauth_scopes" {
-  description = "OAuth2 scopes requested from the credential provider."
-  type        = list(string)
-  default     = []
-}
-
-variable "oauth_default_return_url" {
-  description = "Default OAuth2 return URL."
-  type        = string
-  default     = null
-}
-
-variable "oauth_custom_parameters" {
-  description = "Additional OAuth2 parameters."
-  type        = map(string)
-  default     = {}
-}
-
-variable "allowed_query_parameters" {
-  description = "Query parameters forwarded to the target."
-  type        = set(string)
-  default     = []
-}
-
-variable "allowed_request_headers" {
-  description = "Request headers forwarded to the target."
-  type        = set(string)
-  default     = []
-}
-
-variable "allowed_response_headers" {
-  description = "Response headers returned from the target."
-  type        = set(string)
-  default     = []
+variable "timeouts" {
+  description = "Optional create, update, and delete timeout overrides."
+  type = object({
+    create = optional(string)
+    update = optional(string)
+    delete = optional(string)
+  })
+  default = null
 }

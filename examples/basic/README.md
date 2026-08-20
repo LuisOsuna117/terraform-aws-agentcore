@@ -49,7 +49,7 @@ The machine running `apply` needs AWS CLI v2.35+ (or another release that expose
 | Requirement | Version |
 |---|---|
 | OpenTofu or Terraform | `>= 1.8` |
-| hashicorp/aws provider | `>= 6.48` |
+| hashicorp/aws provider | `>= 6.61` |
 | AWS CLI v2 | latest |
 | bash | any |
 

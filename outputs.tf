@@ -205,14 +205,9 @@ output "gateway_target_ids" {
   value       = var.create_gateway ? module.gateway[0].gateway_target_ids : {}
 }
 
-output "gateway_target_endpoints" {
-  description = "Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create_gateway = false."
-  value       = var.create_gateway ? module.gateway[0].gateway_target_endpoints : {}
-}
-
-output "gateway_agent_target_invocation_urls" {
-  description = "Map of AGENT target keys to their path-routed Gateway invocation URLs. Empty when create_gateway = false."
-  value       = var.create_gateway ? module.gateway[0].gateway_agent_target_invocation_urls : {}
+output "gateway_target_invocation_urls" {
+  description = "Map of direct HTTP target keys to their path-routed Gateway invocation URLs. Empty when create_gateway is false."
+  value       = var.create_gateway ? module.gateway[0].gateway_target_invocation_urls : {}
 }
 
 output "gateway_runtime_target_id" {

@@ -8,11 +8,8 @@ ENV UV_SYSTEM_PYTHON=1 \
     DOCKER_CONTAINER=1
 
 COPY requirements.txt requirements.txt
-COPY constraints.txt constraints.txt
 
-RUN uv pip install -r requirements.txt -c constraints.txt
-
-RUN uv pip install -c constraints.txt "aws-opentelemetry-distro>=0.10.1"
+RUN uv pip install -r requirements.txt
 
 RUN useradd -m -u 1000 bedrock_agentcore
 USER bedrock_agentcore
