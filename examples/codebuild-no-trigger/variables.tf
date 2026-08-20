@@ -7,5 +7,5 @@ variable "aws_region" {
 variable "name" {
   description = "Base name for the AgentCore resources created by this example."
   type        = string
-  default     = "basic-agent"
+  default     = "no-trigger-agent"
 }

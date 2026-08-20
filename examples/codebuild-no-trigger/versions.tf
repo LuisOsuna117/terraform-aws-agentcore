@@ -11,11 +11,4 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-
-  default_tags {
-    tags = {
-      Example   = "terraform-aws-agentcore/basic"
-      ManagedBy = "Terraform"
-    }
-  }
 }

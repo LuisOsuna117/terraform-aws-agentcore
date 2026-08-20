@@ -1,586 +1,736 @@
-variable "create" {
-  description = "Controls whether this module creates resources."
-  type        = bool
-  default     = true
-}
+# ==============================================================================
+# Core Identification
+# ==============================================================================
 
 variable "name" {
-  description = "Name used as the default prefix for module-managed resources."
+  description = "Base name used as a prefix for all resources created by this module (e.g. \"my-agent\"). Must start with a letter, max 32 characters."
   type        = string
 
   validation {
-    condition     = length(trimspace(var.name)) > 0
-    error_message = "name must not be empty."
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9-]{0,31}$", var.name))
+    error_message = "name must start with a letter, be max 32 characters, and contain only letters, numbers, and hyphens."
   }
 }
 
+variable "runtime_name" {
+  description = "Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.runtime_name == null || can(regex("^[a-zA-Z][a-zA-Z0-9_-]{0,47}$", var.runtime_name))
+    error_message = "runtime_name must start with a letter, be max 48 characters, and contain only letters, numbers, hyphens, or underscores."
+  }
+}
+
+variable "description" {
+  description = "Human-readable description attached to the AgentCore runtime resource."
+  type        = string
+  default     = "Managed by terraform-aws-agentcore."
+}
+
 variable "tags" {
-  description = "Tags applied to every taggable resource."
+  description = "Map of tags to apply to all taggable resources. Merged with module-level defaults."
   type        = map(string)
   default     = {}
 }
 
-variable "image_builds" {
-  description = "Opt-in CodeBuild pipelines that package agent source, build an ARM64 container, and publish it to ECR."
-  type = map(object({
-    name                        = optional(string)
-    source_dir                  = string
-    image_tag                   = optional(string, "latest")
-    ecr_repository_name         = optional(string)
-    ecr_image_tag_mutability    = optional(string, "MUTABLE")
-    ecr_scan_on_push            = optional(bool, true)
-    ecr_lifecycle_keep_count    = optional(number, 10)
-    ecr_force_delete            = optional(bool, false)
-    ecr_pull_principals         = optional(list(string), [])
-    source_bucket_force_destroy = optional(bool, false)
-    codebuild_compute_type      = optional(string, "BUILD_GENERAL1_LARGE")
-    codebuild_environment_image = optional(string, "aws/codebuild/amazonlinux2-aarch64-standard:3.0")
-    codebuild_environment_type  = optional(string, "ARM_CONTAINER")
-    codebuild_build_timeout     = optional(number, 60)
-    trigger_build_on_apply      = optional(bool, false)
-  }))
-  default = {}
+# ==============================================================================
+# Runtime Configuration
+# ==============================================================================
+
+variable "network_mode" {
+  description = "Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint publicly; VPC keeps traffic within your VPC via network_mode_config."
+  type        = string
+  default     = "PUBLIC"
 
   validation {
-    condition = alltrue([
-      for build in values(var.image_builds) :
-      length(trimspace(build.source_dir)) > 0 &&
-      length(trimspace(build.image_tag)) > 0 &&
-      contains(["MUTABLE", "IMMUTABLE"], build.ecr_image_tag_mutability) &&
-      build.ecr_lifecycle_keep_count > 0 &&
-      build.codebuild_build_timeout >= 5 && build.codebuild_build_timeout <= 480 &&
-      contains(["BUILD_GENERAL1_SMALL", "BUILD_GENERAL1_MEDIUM", "BUILD_GENERAL1_LARGE", "BUILD_GENERAL1_XLARGE", "BUILD_GENERAL1_2XLARGE"], build.codebuild_compute_type) &&
-      contains(["LINUX_CONTAINER", "LINUX_GPU_CONTAINER", "ARM_CONTAINER", "WINDOWS_CONTAINER", "WINDOWS_SERVER_2019_CONTAINER"], build.codebuild_environment_type) &&
-      alltrue([for principal in build.ecr_pull_principals : can(regex("^arn:aws[^:]*:", principal))])
-    ])
-    error_message = "Image builds require a source directory, valid ECR and CodeBuild settings, and ARN-formatted pull principals."
+    condition     = contains(["PUBLIC", "VPC"], var.network_mode)
+    error_message = "network_mode must be either \"PUBLIC\" or \"VPC\"."
   }
 }
 
-variable "runtimes" {
-  description = "AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM_JWT and AWS_IAM cannot be combined."
-  type = map(object({
-    name                            = optional(string)
-    role_arn                        = string
-    image_uri                       = optional(string)
-    image_build_key                 = optional(string)
-    authentication                  = string
-    description                     = optional(string)
-    environment_variables           = optional(map(string), {})
-    gateway_url_environment         = optional(map(string), {})
-    memory_id_environment           = optional(map(string), {})
-    browser_id_environment          = optional(map(string), {})
-    browser_profile_id_environment  = optional(map(string), {})
-    code_interpreter_id_environment = optional(map(string), {})
-    network_mode                    = optional(string, "PUBLIC")
-    security_groups                 = optional(set(string), [])
-    subnets                         = optional(set(string), [])
-    server_protocol                 = optional(string, "HTTP")
-    request_headers                 = optional(set(string), [])
-    idle_timeout_seconds            = optional(number, 900)
-    max_lifetime_seconds            = optional(number, 28800)
-    jwt = optional(object({
-      discovery_url               = string
-      allowed_audience            = optional(set(string), [])
-      allowed_clients             = optional(set(string), [])
-      allowed_scopes              = optional(set(string), [])
-      allowed_gateway_arn         = optional(string)
-      allowed_gateway_key         = optional(string)
-      allowed_workload_identities = optional(list(string), [])
-      claims = optional(list(object({
-        name         = string
-        value_type   = string
-        operator     = string
-        string_value = optional(string)
-        string_list  = optional(set(string), [])
-      })), [])
-    }))
-  }))
-  default = {}
+variable "vpc_security_group_ids" {
+  description = "Security group IDs attached to the runtime when network_mode = \"VPC\". Must be in the same VPC as vpc_subnet_ids."
+  type        = list(string)
+  default     = []
+}
 
-  validation {
-    condition = alltrue([
-      for runtime in values(var.runtimes) :
-      contains(["AWS_IAM", "CUSTOM_JWT"], runtime.authentication) &&
-      (runtime.image_uri != null) != (runtime.image_build_key != null) &&
-      (runtime.image_build_key == null || contains(keys(var.image_builds), runtime.image_build_key)) &&
-      (runtime.authentication == "CUSTOM_JWT") == (runtime.jwt != null) &&
-      (runtime.jwt == null || !(runtime.jwt.allowed_gateway_arn != null && runtime.jwt.allowed_gateway_key != null)) &&
-      (runtime.network_mode == "PUBLIC" || (runtime.network_mode == "VPC" && length(runtime.security_groups) > 0 && length(runtime.subnets) > 0))
-    ])
-    error_message = "Each runtime must select exactly one image_uri or image_build_key, use exactly AWS_IAM or CUSTOM_JWT, provide JWT config only for CUSTOM_JWT, and provide subnets and security groups in VPC mode."
+variable "vpc_subnet_ids" {
+  description = "Subnet IDs where the runtime is placed when network_mode = \"VPC\". Use private subnets for least-privilege network design."
+  type        = list(string)
+  default     = []
+}
+
+variable "create_build_pipeline" {
+  description = "When true (default), creates the full CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. Set to false to use a pre-built image via image_uri (Bring Your Own Image)."
+  type        = bool
+  default     = true
+}
+
+variable "create_runtime" {
+  description = "When true (default), creates the AgentCore runtime resource. Set to false to provision only the build pipeline infrastructure without a runtime (useful for pre-baking images before the runtime is ready)."
+  type        = bool
+  default     = true
+}
+
+variable "image_uri" {
+  description = "Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create_runtime = true and create_build_pipeline = false. Must be null when create_build_pipeline = true."
+  type        = string
+  default     = null
+}
+
+variable "trigger_build_on_apply" {
+  description = "When true (default) and create_build_pipeline = true, a CodeBuild run is automatically started on every apply where source code, image_tag, or ECR configuration changes. Set to false to manage builds out-of-band (CI/CD pipeline, manual console run). Ignored when create_build_pipeline = false."
+  type        = bool
+  default     = true
+}
+
+variable "image_tag" {
+  description = "Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger_build_on_apply = true."
+  type        = string
+  default     = "latest"
+}
+
+variable "environment_variables" {
+  description = "Additional environment variables injected into the AgentCore runtime process. AWS_REGION and AWS_DEFAULT_REGION are always set; BEDROCK_AGENTCORE_CODE_INTERPRETER_ID is also set when create_code_interpreter = true."
+  type        = map(string)
+  default     = {}
+}
+
+variable "runtime_metadata_configuration" {
+  description = "AgentCore Runtime microVM metadata configuration. require_mmdsv2 maps to metadataConfiguration.requireMMDSV2. Until the AWS provider exposes this field, the runtime submodule applies it with UpdateAgentRuntime through the AWS CLI. Set to null only to disable the compatibility update."
+  type = object({
+    require_mmdsv2 = bool
+  })
+  default = {
+    require_mmdsv2 = true
   }
 }
 
-variable "runtime_endpoints" {
-  description = "Named immutable Runtime endpoints."
-  type = map(object({
-    runtime_key     = string
-    name            = optional(string)
-    description     = optional(string)
-    runtime_version = optional(string)
-  }))
-  default = {}
+# ==============================================================================
+# Runtime — Authorizer
+# ==============================================================================
+
+variable "authorizer_discovery_url" {
+  description = "OIDC discovery URL for JWT authorisation on the runtime endpoint (must end with /.well-known/openid-configuration). When null, the endpoint is unauthenticated at the AgentCore layer."
+  type        = string
+  default     = null
 }
 
-variable "workload_identities" {
-  description = "AgentCore workload identities for outbound authentication."
-  type = map(object({
-    name                      = optional(string)
-    allowed_oauth_return_urls = optional(set(string), [])
-  }))
-  default = {}
+variable "authorizer_allowed_audience" {
+  description = "Set of allowed JWT audience values. Ignored when authorizer_discovery_url is null."
+  type        = list(string)
+  default     = []
 }
 
-variable "api_key_credential_providers" {
-  description = "AgentCore Identity API-key providers. The key is write-only and is never returned by this module."
-  type = map(object({
-    name               = optional(string)
-    api_key_write_only = string
-    secret_version     = number
-  }))
-  default = {}
+variable "authorizer_allowed_clients" {
+  description = "Set of allowed client IDs for JWT token validation. Ignored when authorizer_discovery_url is null."
+  type        = list(string)
+  default     = []
 }
 
-variable "oauth2_credential_providers" {
-  description = "Custom AgentCore Identity OAuth2 providers. Client credentials are write-only and are never returned."
-  type = map(object({
-    name                     = optional(string)
-    client_id_write_only     = string
-    client_secret_write_only = string
-    credentials_version      = number
-    discovery_url            = optional(string)
-    issuer                   = optional(string)
-    authorization_endpoint   = optional(string)
-    token_endpoint           = optional(string)
-    response_types           = optional(set(string), [])
-  }))
-  default = {}
+# ==============================================================================
+# Runtime — Lifecycle
+# ==============================================================================
+
+variable "idle_runtime_session_timeout" {
+  description = "Idle session timeout in seconds for the runtime. When null, the service default applies."
+  type        = number
+  default     = null
+}
+
+variable "max_lifetime" {
+  description = "Maximum instance lifetime in seconds for the runtime. When null, the service default applies."
+  type        = number
+  default     = null
+}
+
+# ==============================================================================
+# Runtime — Protocol and Headers
+# ==============================================================================
+
+variable "server_protocol" {
+  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies."
+  type        = string
+  default     = null
 
   validation {
-    condition = alltrue([
-      for provider in values(var.oauth2_credential_providers) :
-      provider.discovery_url != null || (
-        provider.issuer != null &&
-        provider.authorization_endpoint != null &&
-        provider.token_endpoint != null
-      )
-    ])
-    error_message = "Each OAuth2 provider requires discovery_url or explicit issuer, authorization endpoint, and token endpoint."
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
+    error_message = "server_protocol must be one of: HTTP, MCP, A2A."
   }
 }
 
-variable "policy_engines" {
-  description = "AgentCore Cedar policy engines."
-  type = map(object({
-    name               = optional(string)
-    description        = optional(string)
-    encryption_key_arn = optional(string)
-  }))
-  default = {}
+variable "request_header_allowlist" {
+  description = "List of HTTP request headers to pass through to the runtime container. When empty, no additional headers are forwarded."
+  type        = list(string)
+  default     = []
 }
 
-variable "policies" {
-  description = "Cedar policies, normally generated tool-by-tool from the caller's security catalog."
-  type = map(object({
-    engine_key = string
-    name       = optional(string)
-    statement  = optional(string)
-    scoped = optional(object({
-      gateway_key    = string
-      principal_type = string
-      action_id      = string
-      condition      = optional(string)
-    }))
-    description     = optional(string)
-    validation_mode = optional(string, "FAIL_ON_ANY_FINDINGS")
-  }))
-  default = {}
+# ==============================================================================
+# Code Interpreter
+# ==============================================================================
+
+variable "create_code_interpreter" {
+  description = "When true, creates an AgentCore Code Interpreter alongside the runtime."
+  type        = bool
+  default     = false
+}
+
+variable "code_interpreter_name" {
+  description = "Name for the AgentCore Code Interpreter. Defaults to var.name. Hyphens are automatically converted to underscores."
+  type        = string
+  default     = null
 
   validation {
-    condition = alltrue([
-      for policy in values(var.policies) : (policy.statement != null) != (policy.scoped != null)
-    ])
-    error_message = "Each policy must provide exactly one of statement or scoped."
+    condition     = var.code_interpreter_name == null || can(regex("^[a-zA-Z][a-zA-Z0-9_-]{0,47}$", var.code_interpreter_name))
+    error_message = "code_interpreter_name must start with a letter, be at most 48 characters, and contain only letters, numbers, hyphens, or underscores."
   }
 }
 
-variable "resource_policies" {
-  description = "Resource policies for runtimes, gateways, and other AgentCore resources."
-  type = map(object({
-    resource_arn  = optional(string)
-    resource_type = optional(string)
-    resource_key  = optional(string)
-    policy        = optional(string)
-    principals    = optional(set(string), [])
-    actions       = optional(set(string), [])
-  }))
-  default = {}
+variable "code_interpreter_description" {
+  description = "Human-readable description for the AgentCore Code Interpreter."
+  type        = string
+  default     = "Managed by terraform-aws-agentcore."
+}
+
+variable "code_interpreter_execution_role_arn" {
+  description = "ARN of an IAM role for the Code Interpreter to assume. Defaults to the runtime execution role managed or supplied through execution_role_arn."
+  type        = string
+  default     = null
+}
+
+variable "code_interpreter_network_mode" {
+  description = "Network mode for the Code Interpreter. SANDBOX allows limited AWS service access, PUBLIC allows internet access, and VPC uses the supplied VPC configuration."
+  type        = string
+  default     = "SANDBOX"
 
   validation {
-    condition = alltrue([
-      for binding in values(var.resource_policies) :
-      (binding.resource_arn != null) != (binding.resource_type != null && binding.resource_key != null) &&
-      (binding.policy != null) != (length(binding.principals) > 0 && length(binding.actions) > 0) &&
-      !contains(binding.principals, "*") && !contains(binding.actions, "*") &&
-      (binding.resource_type == null || contains(["RUNTIME", "GATEWAY", "MEMORY"], binding.resource_type))
-    ])
-    error_message = "Each resource policy must select exactly one external ARN or one module-managed RUNTIME, GATEWAY, or MEMORY key."
+    condition     = contains(["PUBLIC", "SANDBOX", "VPC"], var.code_interpreter_network_mode)
+    error_message = "code_interpreter_network_mode must be one of: PUBLIC, SANDBOX, VPC."
   }
 }
 
-variable "runtime_role_permissions" {
-  description = "Least-privilege inline policies attached to caller-owned Runtime roles, with module resource references resolved without cycles."
-  type = map(object({
-    runtime_key = string
-    statements = list(object({
-      sid                    = string
-      actions                = set(string)
-      resources              = optional(set(string), [])
-      gateway_keys           = optional(set(string), [])
-      memory_keys            = optional(set(string), [])
-      code_interpreter_keys  = optional(set(string), [])
-      browser_keys           = optional(set(string), [])
-      gateway_parameter_keys = optional(set(string), [])
-    }))
-  }))
-  default = {}
+variable "code_interpreter_vpc_security_group_ids" {
+  description = "Security group IDs attached to the Code Interpreter when code_interpreter_network_mode = \"VPC\"."
+  type        = list(string)
+  default     = []
+}
+
+variable "code_interpreter_vpc_subnet_ids" {
+  description = "Subnet IDs where the Code Interpreter is placed when code_interpreter_network_mode = \"VPC\"."
+  type        = list(string)
+  default     = []
+}
+
+# ==============================================================================
+# IAM — Execution Role
+# ==============================================================================
+
+variable "create_execution_role" {
+  description = "When true, the module creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Set to false to provide an existing role via execution_role_arn."
+  type        = bool
+  default     = true
+}
+
+variable "execution_role_arn" {
+  description = "ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create_runtime = true and create_execution_role = false."
+  type        = string
+  default     = null
+}
+
+variable "attach_bedrock_fullaccess_policy" {
+  description = "When true and create_execution_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional_iam_statements."
+  type        = bool
+  default     = true
+}
+
+variable "additional_iam_statements" {
+  description = "Additional IAM policy statements to append to the inline policy on the execution role. Use this to grant access to Bedrock models, Secrets Manager, or other services your agent code requires."
+  type        = list(any)
+  default     = []
+}
+
+variable "additional_iam_policy_arns" {
+  description = "Additional managed IAM policy ARNs to attach to the module-created execution role. Ignored when create_execution_role = false."
+  type        = set(string)
+  default     = []
 
   validation {
-    condition = alltrue(flatten([
-      for policy in values(var.runtime_role_permissions) : [
-        for statement in policy.statements :
-        length(statement.actions) > 0 && !contains(statement.actions, "*") && !contains(statement.resources, "*")
-      ]
-    ]))
-    error_message = "Runtime role policies must declare concrete actions and cannot use wildcard actions or resources."
+    condition     = alltrue([for arn in var.additional_iam_policy_arns : can(regex("^arn:[^:]+:iam::(aws|[0-9]{12}):policy/.+$", arn))])
+    error_message = "Each entry in additional_iam_policy_arns must be a valid managed IAM policy ARN."
   }
 }
 
-variable "gateway_role_permissions" {
-  description = "Least-privilege inline policies attached to caller-owned Gateway roles."
-  type = map(object({
-    gateway_key = string
-    statements = list(object({
-      sid                    = string
-      actions                = set(string)
-      resources              = optional(set(string), [])
-      runtime_keys           = optional(set(string), [])
-      api_key_provider_keys  = optional(set(string), [])
-      oauth2_credential_keys = optional(set(string), [])
-      workload_identity_keys = optional(set(string), [])
-    }))
-  }))
-  default = {}
+variable "allow_bedrock_invoke_all" {
+  description = "When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource \"*\". Set to false to remove this broad statement and supply model-specific permissions via additional_iam_statements (recommended for production)."
+  type        = bool
+  default     = true
+}
+
+variable "allow_workload_access_token_for_user_id" {
+  description = "When true (default), allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny so broad managed policies such as BedrockAgentCoreFullAccess cannot re-enable it."
+  type        = bool
+  default     = true
+}
+
+# ==============================================================================
+# ECR
+# ==============================================================================
+
+variable "ecr_repository_name" {
+  description = "Name of the ECR repository that holds agent container images. Defaults to var.name when null."
+  type        = string
+  default     = null
 
   validation {
-    condition = alltrue(flatten([
-      for policy in values(var.gateway_role_permissions) : [
-        for statement in policy.statements :
-        length(statement.actions) > 0 && !contains(statement.actions, "*") && !contains(statement.resources, "*")
-      ]
-    ]))
-    error_message = "Gateway role policies must declare concrete actions and cannot use wildcard actions or resources."
+    condition     = var.ecr_repository_name == null || can(regex("^[a-z0-9][a-z0-9._-]{0,255}$", var.ecr_repository_name))
+    error_message = "ecr_repository_name must be lowercase, start with a letter or digit, and be at most 256 characters."
   }
 }
 
-variable "gateways" {
-  description = "AgentCore Gateways. An attached policy engine always runs in ENFORCE mode."
-  type = map(object({
-    name              = optional(string)
-    role_arn          = string
-    authentication    = string
-    description       = optional(string)
-    kms_key_arn       = optional(string)
-    exception_level   = optional(string)
-    policy_engine_key = optional(string)
-    protocol_type     = optional(string)
-    jwt = optional(object({
-      discovery_url               = string
-      allowed_audience            = optional(set(string), [])
-      allowed_clients             = optional(set(string), [])
-      allowed_scopes              = optional(set(string), [])
-      allowed_workload_identities = optional(list(string), [])
-      claims = optional(list(object({
-        name         = string
-        value_type   = string
-        operator     = string
-        string_value = optional(string)
-        string_list  = optional(set(string), [])
-      })), [])
-    }))
-  }))
-  default = {}
+variable "ecr_image_tag_mutability" {
+  description = "Tag mutability setting for the ECR repository. IMMUTABLE is recommended for production to prevent image overwrites."
+  type        = string
+  default     = "MUTABLE"
 
   validation {
-    condition = alltrue([
-      for gateway in values(var.gateways) :
-      contains(["AWS_IAM", "CUSTOM_JWT"], gateway.authentication) &&
-      (gateway.authentication == "CUSTOM_JWT") == (gateway.jwt != null)
-    ])
-    error_message = "Each gateway must use exactly AWS_IAM or CUSTOM_JWT, with JWT config only for CUSTOM_JWT."
+    condition     = contains(["MUTABLE", "IMMUTABLE"], var.ecr_image_tag_mutability)
+    error_message = "ecr_image_tag_mutability must be either \"MUTABLE\" or \"IMMUTABLE\"."
   }
+}
+
+variable "ecr_scan_on_push" {
+  description = "Enable automatic vulnerability scanning when an image is pushed to the ECR repository."
+  type        = bool
+  default     = true
+}
+
+variable "ecr_lifecycle_keep_count" {
+  description = "Number of most-recent images to retain in the ECR repository. Older images are expired automatically."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.ecr_lifecycle_keep_count >= 1
+    error_message = "ecr_lifecycle_keep_count must be at least 1."
+  }
+}
+
+variable "ecr_force_delete" {
+  description = "Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety."
+  type        = bool
+  default     = false
+}
+
+variable "ecr_pull_principals" {
+  description = "List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.ecr_pull_principals : can(regex("^arn:aws[^:]*:", p))])
+    error_message = "Each entry in ecr_pull_principals must be a valid ARN starting with arn:aws."
+  }
+}
+
+# ==============================================================================
+# S3 — Agent Source
+# ==============================================================================
+
+variable "agent_source_dir" {
+  description = "Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume."
+  type        = string
+  default     = null # resolved in locals to "${path.module}/agent-code"
+}
+
+variable "source_bucket_force_destroy" {
+  description = "Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety."
+  type        = bool
+  default     = false
+}
+
+# ==============================================================================
+# CodeBuild
+# ==============================================================================
+
+variable "codebuild_compute_type" {
+  description = "Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html"
+  type        = string
+  default     = "BUILD_GENERAL1_LARGE"
+
+  validation {
+    condition = contains([
+      "BUILD_GENERAL1_SMALL", "BUILD_GENERAL1_MEDIUM", "BUILD_GENERAL1_LARGE",
+      "BUILD_GENERAL1_XLARGE", "BUILD_GENERAL1_2XLARGE",
+      "BUILD_LAMBDA_1GB", "BUILD_LAMBDA_2GB", "BUILD_LAMBDA_4GB", "BUILD_LAMBDA_8GB", "BUILD_LAMBDA_10GB"
+    ], var.codebuild_compute_type)
+    error_message = "codebuild_compute_type is not a recognised CodeBuild compute type."
+  }
+}
+
+variable "codebuild_environment_image" {
+  description = "Docker image used for the CodeBuild build environment."
+  type        = string
+  default     = "aws/codebuild/amazonlinux2-aarch64-standard:3.0"
+}
+
+variable "codebuild_environment_type" {
+  description = "CodeBuild environment type. Should match the architecture of codebuild_environment_image (e.g. ARM_CONTAINER for aarch64 images)."
+  type        = string
+  default     = "ARM_CONTAINER"
+
+  validation {
+    condition     = contains(["LINUX_CONTAINER", "LINUX_GPU_CONTAINER", "ARM_CONTAINER", "WINDOWS_CONTAINER", "WINDOWS_SERVER_2019_CONTAINER"], var.codebuild_environment_type)
+    error_message = "codebuild_environment_type must be a valid CodeBuild environment type."
+  }
+}
+
+variable "codebuild_build_timeout" {
+  description = "Maximum duration (in minutes) for a CodeBuild build before it is terminated."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.codebuild_build_timeout >= 5 && var.codebuild_build_timeout <= 480
+    error_message = "codebuild_build_timeout must be between 5 and 480 minutes."
+  }
+}
+
+# ==============================================================================
+# Memory (modules/memory)
+# ==============================================================================
+
+variable "create_memory" {
+  description = "When true, creates an AgentCore Memory resource using modules/memory. Defaults to false."
+  type        = bool
+  default     = false
+}
+
+variable "memory_name" {
+  description = "Name for the AgentCore Memory resource. Defaults to var.name when null."
+  type        = string
+  default     = null
+}
+
+variable "memory_event_expiry_duration" {
+  description = "Number of days after which memory events expire (7–365). Required when create_memory = true. Defaults to 90."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.memory_event_expiry_duration >= 7 && var.memory_event_expiry_duration <= 365
+    error_message = "memory_event_expiry_duration must be between 7 and 365 days."
+  }
+}
+
+variable "memory_description" {
+  description = "Human-readable description for the Memory resource."
+  type        = string
+  default     = null
+}
+
+variable "memory_encryption_key_arn" {
+  description = "ARN of the KMS key used to encrypt memory data. When null, AWS-managed encryption is used."
+  type        = string
+  default     = null
+}
+
+variable "memory_execution_role_arn" {
+  description = "ARN of the IAM role the memory service assumes. When null, the default service role is used."
+  type        = string
+  default     = null
+}
+
+# ==============================================================================
+# Gateway (modules/gateway)
+# ==============================================================================
+
+variable "create_gateway" {
+  description = "When true, creates an AgentCore Gateway resource using modules/gateway. Defaults to false."
+  type        = bool
+  default     = false
+}
+
+variable "gateway_name" {
+  description = "Name for the AgentCore Gateway resource. Defaults to var.name when null."
+  type        = string
+  default     = null
+}
+
+variable "gateway_description" {
+  description = "Human-readable description for the Gateway resource."
+  type        = string
+  default     = null
+}
+
+variable "gateway_create_role" {
+  description = "When true, the gateway module creates an IAM role. Set to false and supply gateway_role_arn to reuse an existing role."
+  type        = bool
+  default     = true
+}
+
+variable "gateway_role_arn" {
+  description = "ARN of an existing IAM role for the gateway. Required when gateway_create_role = false."
+  type        = string
+  default     = null
+}
+
+variable "gateway_authorizer_type" {
+  description = "Gateway request authorizer type. \"CUSTOM_JWT\" requires gateway_authorizer_configuration. \"AWS_IAM\" uses SigV4."
+  type        = string
+  default     = "AWS_IAM"
+
+  validation {
+    condition     = contains(["CUSTOM_JWT", "AWS_IAM"], var.gateway_authorizer_type)
+    error_message = "gateway_authorizer_type must be either \"CUSTOM_JWT\" or \"AWS_IAM\"."
+  }
+}
+
+variable "gateway_authorizer_configuration" {
+  description = "JWT authorizer configuration. Required when gateway_authorizer_type = \"CUSTOM_JWT\". Shape: { discovery_url, allowed_audience, allowed_clients }."
+  type = object({
+    discovery_url    = string
+    allowed_audience = optional(list(string), [])
+    allowed_clients  = optional(list(string), [])
+  })
+  default = null
+}
+
+variable "gateway_protocol_type" {
+  description = "Optional gateway aggregation protocol. Set to \"MCP\" for MCP aggregation, or null for general HTTP targets such as AgentCore Runtime agents. MCP is inferred when an MCP target is configured."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.gateway_protocol_type == null ? true : var.gateway_protocol_type == "MCP"
+    error_message = "gateway_protocol_type must be \"MCP\" or null."
+  }
+}
+
+variable "gateway_protocol_configuration" {
+  description = "MCP protocol configuration. Shape: { instructions, search_type, supported_versions }."
+  type = object({
+    instructions       = optional(string)
+    search_type        = optional(string)
+    supported_versions = optional(list(string), [])
+  })
+  default = null
+}
+
+variable "gateway_interceptor_configurations" {
+  description = "List of interceptor configurations (max 2). Each: { interception_points, lambda_arn, pass_request_headers }."
+  type = list(object({
+    interception_points  = list(string)
+    lambda_arn           = string
+    pass_request_headers = optional(bool, false)
+  }))
+  default = []
 }
 
 variable "gateway_targets" {
-  description = "AgentCore Runtime or MCP-server Gateway targets with one explicit outbound credential mode."
+  description = "Map of general Gateway Targets. Set target_type to \"MCP\" or \"AGENT\". MCP targets use endpoint or agent_runtime_arn; AGENT targets require agent_runtime_arn and route directly without MCP aggregation."
   type = map(object({
-    gateway_key               = string
-    name                      = optional(string)
-    target_type               = string
-    runtime_key               = optional(string)
-    runtime_arn               = optional(string)
-    qualifier                 = optional(string, "DEFAULT")
-    mcp_endpoint              = optional(string)
-    mcp_listing_mode          = optional(string)
-    credential_mode           = string
-    signing_service           = optional(string, "bedrock-agentcore")
-    signing_region            = optional(string)
-    credential_provider_key   = optional(string)
-    credential_provider_arn   = optional(string)
-    credential_location       = optional(string, "HEADER")
-    credential_parameter_name = optional(string)
-    credential_prefix         = optional(string)
-    oauth_grant_type          = optional(string)
-    oauth_scopes              = optional(set(string), [])
-    oauth_default_return_url  = optional(string)
-    oauth_custom_parameters   = optional(map(string), {})
-    description               = optional(string)
-    allowed_query_parameters  = optional(set(string), [])
-    allowed_request_headers   = optional(set(string), [])
-    allowed_response_headers  = optional(set(string), [])
+    target_type       = string
+    name              = optional(string)
+    description       = optional(string)
+    endpoint          = optional(string)
+    agent_runtime_arn = optional(string)
+    qualifier         = optional(string, "DEFAULT")
+    schema = optional(object({
+      inline_payload = optional(string)
+      s3 = optional(object({
+        uri                     = string
+        bucket_owner_account_id = optional(string)
+      }))
+    }))
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
   }))
   default = {}
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) : contains(["MCP", "AGENT"], upper(target.target_type))
+    ])
+    error_message = "Each gateway_targets entry target_type must be either \"MCP\" or \"AGENT\"."
+  }
 
   validation {
     condition = alltrue([
       for target in values(var.gateway_targets) :
-      contains(["HTTP_RUNTIME", "MCP_SERVER"], target.target_type) &&
-      contains(["JWT_PASSTHROUGH", "GATEWAY_IAM_ROLE", "CALLER_IAM_CREDENTIALS", "API_KEY", "OAUTH"], target.credential_mode) &&
-      (
-        target.target_type == "HTTP_RUNTIME"
-        ? ((target.runtime_key != null) != (target.runtime_arn != null)) && target.mcp_endpoint == null
-        : target.runtime_key == null && target.runtime_arn == null && target.mcp_endpoint != null
-      ) &&
-      (
-        contains(["API_KEY", "OAUTH"], target.credential_mode)
-        ? ((target.credential_provider_key != null) != (target.credential_provider_arn != null))
-        : target.credential_provider_key == null && target.credential_provider_arn == null
-      ) &&
-      (target.credential_mode != "API_KEY" || target.credential_parameter_name != null) &&
-      (target.credential_mode != "OAUTH" || (target.oauth_grant_type != null && length(target.oauth_scopes) > 0))
+      upper(target.target_type) != "MCP" || length(compact([
+        try(trimspace(target.endpoint), ""),
+        try(trimspace(target.agent_runtime_arn), ""),
+      ])) == 1
     ])
-    error_message = "Each Gateway target must select one target type, one credential mode, and only the fields required by that combination."
+    error_message = "Each MCP gateway_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      upper(target.target_type) != "AGENT" || (
+        try(trimspace(target.agent_runtime_arn), "") != "" &&
+        try(trimspace(target.endpoint), "") == ""
+      )
+    ])
+    error_message = "Each AGENT gateway_targets entry must provide agent_runtime_arn and must not set endpoint."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
+    ])
+    error_message = "Each explicit gateway_targets endpoint must start with https://."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
+    ])
+    error_message = "Each gateway_targets agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
+    ])
+    error_message = "Each gateway_targets target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) :
+      target.schema == null || length(compact([
+        try(trimspace(target.schema.inline_payload), ""),
+        try(trimspace(target.schema.s3.uri), ""),
+      ])) == 1
+    ])
+    error_message = "Each gateway_targets schema must provide exactly one of inline_payload or s3."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_targets) : target.schema == null || upper(target.target_type) == "AGENT"
+    ])
+    error_message = "gateway_targets.schema is only supported for AGENT targets."
   }
 }
 
-variable "gateway_rules" {
-  description = "Path rules that route to a named target; optional IAM principals constrain workload routes."
+variable "gateway_mcp_targets" {
+  description = "Deprecated compatibility alias for MCP Gateway Targets. Prefer gateway_targets with target_type = \"MCP\"."
   type = map(object({
-    gateway_key    = string
-    priority       = number
-    paths          = list(string)
-    target_name    = string
-    description    = optional(string)
-    iam_principals = optional(set(string), [])
-  }))
-  default = {}
-}
-
-variable "gateway_discovery_parameters" {
-  description = "SSM parameters that publish generated Gateway URLs without creating Runtime/Gateway dependency cycles."
-  type = map(object({
-    gateway_key = string
-    name        = string
-    description = optional(string)
+    name                     = optional(string)
+    description              = optional(string)
+    endpoint                 = optional(string)
+    agent_runtime_arn        = optional(string)
+    qualifier                = optional(string, "DEFAULT")
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
   }))
   default = {}
 
   validation {
-    condition     = alltrue([for item in values(var.gateway_discovery_parameters) : startswith(item.name, "/")])
-    error_message = "Gateway discovery parameter names must be absolute SSM paths."
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      length(compact([
+        try(trimspace(target.endpoint), ""),
+        try(trimspace(target.agent_runtime_arn), ""),
+      ])) == 1
+    ])
+    error_message = "Each gateway_mcp_targets entry must provide exactly one of endpoint or agent_runtime_arn."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      try(trimspace(target.endpoint), "") == "" || can(regex("^https://", trimspace(target.endpoint)))
+    ])
+    error_message = "Each explicit gateway_mcp_targets endpoint must start with https://."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      try(trimspace(target.agent_runtime_arn), "") == "" || can(regex("^arn:aws[^:]*:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:(runtime|agent)/.+", trimspace(target.agent_runtime_arn)))
+    ])
+    error_message = "Each gateway_mcp_targets agent_runtime_arn must be a valid Bedrock AgentCore Runtime ARN."
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.gateway_mcp_targets) :
+      target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", target.name))
+    ])
+    error_message = "Each gateway_mcp_targets target name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
   }
 }
 
-variable "memories" {
-  description = "AgentCore Memory stores. Namespace content is never an authority source."
-  type = map(object({
-    name                      = optional(string)
-    event_expiry_duration     = number
-    description               = optional(string)
-    encryption_key_arn        = optional(string)
-    memory_execution_role_arn = optional(string)
-    indexed_keys = optional(list(object({
-      key  = string
-      type = string
-    })), [])
-  }))
-  default = {}
+variable "gateway_attach_runtime_target" {
+  description = "When true, attach the runtime created by this module call as a Gateway Target. Uses key \"runtime\". The target type comes from gateway_runtime_target.target_type, or is inferred from the gateway/runtime configuration."
+  type        = bool
+  default     = false
 }
 
-variable "memory_strategies" {
-  description = "Memory strategies attached to a module-managed Memory."
-  type = map(object({
-    memory_key                = string
-    name                      = optional(string)
-    type                      = string
-    description               = optional(string)
-    namespaces                = optional(list(string), [])
-    namespace_templates       = optional(list(string), [])
-    memory_execution_role_arn = optional(string)
-  }))
-  default = {}
-}
-
-variable "browsers" {
-  description = "AgentCore Browser sandboxes. VPC mode requires subnets and security groups."
-  type = map(object({
-    name               = optional(string)
-    description        = optional(string)
-    execution_role_arn = optional(string)
-    network_mode       = optional(string, "PUBLIC")
-    security_groups    = optional(set(string), [])
-    subnets            = optional(set(string), [])
-    browser_signing    = optional(bool, false)
-  }))
-  default = {}
-}
-
-variable "browser_profiles" {
-  description = "Reusable Browser profiles."
-  type = map(object({
+variable "gateway_runtime_target" {
+  description = "Configuration for the module-created runtime Gateway Target when gateway_attach_runtime_target = true. target_type accepts MCP or AGENT; when null, MCP is selected only for an explicitly MCP gateway or MCP runtime, otherwise AGENT."
+  type = object({
+    target_type = optional(string)
     name        = optional(string)
     description = optional(string)
-  }))
-  default = {}
-}
-
-variable "code_interpreters" {
-  description = "AgentCore Code Interpreter sandboxes. SANDBOX is the safe no-network default."
-  type = map(object({
-    name               = optional(string)
-    description        = optional(string)
-    execution_role_arn = optional(string)
-    network_mode       = optional(string, "SANDBOX")
-    security_groups    = optional(set(string), [])
-    subnets            = optional(set(string), [])
-  }))
-  default = {}
-}
-
-variable "harnesses" {
-  description = "Managed Harness configurations for non-production experimentation without effect tools."
-  type = map(object({
-    name                  = optional(string)
-    execution_role_arn    = string
-    image_uri             = string
-    model_id              = string
-    system_prompt         = string
-    environment_variables = optional(map(string), {})
-    network_mode          = optional(string, "PUBLIC")
-    security_groups       = optional(set(string), [])
-    subnets               = optional(set(string), [])
-    require_s3_endpoint   = optional(bool, false)
-    idle_timeout_seconds  = optional(number)
-    max_lifetime_seconds  = optional(number)
-    allowed_tools         = optional(set(string), [])
-    max_iterations        = optional(number, 10)
-    max_tokens            = optional(number, 8192)
-    timeout_seconds       = optional(number, 900)
-    temperature           = optional(number, 0)
-    top_p                 = optional(number, 1)
-  }))
-  default = {}
-}
-
-variable "evaluators" {
-  description = "AgentCore evaluators. Configure exactly one of code_based or llm_judge."
-  type = map(object({
-    name        = optional(string)
-    level       = string
-    description = optional(string)
-    kms_key_arn = optional(string)
-    code_based = optional(object({
-      lambda_arn      = string
-      timeout_seconds = optional(number, 60)
-    }))
-    llm_judge = optional(object({
-      instructions = string
-      model_id     = string
-      max_tokens   = optional(number, 2048)
-      temperature  = optional(number, 0)
-      top_p        = optional(number, 1)
-      categories = list(object({
-        label      = string
-        definition = string
+    qualifier   = optional(string, "DEFAULT")
+    schema = optional(object({
+      inline_payload = optional(string)
+      s3 = optional(object({
+        uri                     = string
+        bucket_owner_account_id = optional(string)
       }))
     }))
-  }))
-  default = {}
+    allowed_query_parameters = optional(list(string), [])
+    allowed_request_headers  = optional(list(string), [])
+    allowed_response_headers = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
 
   validation {
-    condition = alltrue([
-      for evaluator in values(var.evaluators) :
-      (evaluator.code_based != null) != (evaluator.llm_judge != null)
-    ])
-    error_message = "Each evaluator must configure exactly one of code_based or llm_judge."
+    condition     = var.gateway_runtime_target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", var.gateway_runtime_target.name))
+    error_message = "gateway_runtime_target.name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+
+  validation {
+    condition     = var.gateway_runtime_target.target_type == null ? true : contains(["MCP", "AGENT"], upper(var.gateway_runtime_target.target_type))
+    error_message = "gateway_runtime_target.target_type must be \"MCP\", \"AGENT\", or null."
+  }
+
+  validation {
+    condition = var.gateway_runtime_target.schema == null || length(compact([
+      try(trimspace(var.gateway_runtime_target.schema.inline_payload), ""),
+      try(trimspace(var.gateway_runtime_target.schema.s3.uri), ""),
+    ])) == 1
+    error_message = "gateway_runtime_target.schema must provide exactly one of inline_payload or s3."
   }
 }
 
-variable "online_evaluations" {
-  description = "Online evaluation configs sourcing sanitized AgentCore telemetry from CloudWatch Logs."
-  type = map(object({
-    name                    = optional(string)
-    execution_role_arn      = string
-    evaluator_keys          = set(string)
-    log_group_names         = set(string)
-    service_names           = set(string)
-    sampling_percentage     = number
-    session_timeout_minutes = number
-    enable_on_create        = optional(bool, true)
-    description             = optional(string)
-  }))
-  default = {}
+variable "gateway_kms_key_arn" {
+  description = "ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used."
+  type        = string
+  default     = null
 }
 
-variable "registries" {
-  description = "AWS Agent Registry Preview catalogs in the current agent-registry namespace, isolated behind CloudFormation until the AWS provider exposes a native resource."
-  type = map(object({
-    name               = optional(string)
-    log_retention_days = optional(number, 365)
-  }))
-  default = {}
+variable "gateway_exception_level" {
+  description = "Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR."
+  type        = string
+  default     = null
 
   validation {
-    condition = alltrue([
-      for registry in values(var.registries) : registry.log_retention_days >= 365
-    ])
-    error_message = "Registry lifecycle logs must be retained for at least 365 days."
+    condition     = var.gateway_exception_level == null ? true : contains(["INFO", "WARN", "ERROR"], var.gateway_exception_level)
+    error_message = "gateway_exception_level must be one of INFO, WARN, or ERROR."
   }
-}
-
-variable "observability" {
-  description = "CloudWatch log groups used by AgentCore Observability, evaluations, and sanitized usage telemetry."
-  type = map(object({
-    log_group_name    = string
-    retention_in_days = optional(number, 365)
-    kms_key_arn       = optional(string)
-  }))
-  default = {}
-
-  validation {
-    condition     = alltrue([for config in values(var.observability) : config.retention_in_days >= 365])
-    error_message = "AgentCore observability retention must be at least 365 days."
-  }
-}
-
-variable "preview_stacks" {
-  description = "Isolated CloudFormation stacks for AgentCore Preview resources absent from the AWS provider. Templates must reference secrets externally."
-  type = map(object({
-    name          = optional(string)
-    template_body = string
-    parameters    = optional(map(string), {})
-    capabilities  = optional(set(string), [])
-  }))
-  default = {}
 }

@@ -119,7 +119,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "agent_source" {
 data "archive_file" "agent_source" {
   type        = "zip"
   source_dir  = var.agent_source_dir
-  output_path = "${path.module}/.terraform/${var.name}-agent-source.zip"
+  output_path = "${path.module}/.terraform/agent-source.zip"
 }
 
 resource "aws_s3_object" "agent_source" {

@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "name" {
-  description = "Base name for the AgentCore resources created by this example."
+  description = "Base name for the AgentCore Gateway resources created by this example."
   type        = string
-  default     = "basic-agent"
+  default     = "mcp-gateway"
 }

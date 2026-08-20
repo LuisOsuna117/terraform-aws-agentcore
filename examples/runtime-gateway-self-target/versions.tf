@@ -14,7 +14,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Example   = "terraform-aws-agentcore/basic"
+      Example   = "terraform-aws-agentcore/runtime-gateway-self-target"
       ManagedBy = "Terraform"
     }
   }

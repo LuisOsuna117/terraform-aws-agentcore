@@ -1,255 +1,913 @@
-# AWS AgentCore Terraform module
+# terraform-aws-agentcore
 
-Terraform module which creates Amazon Bedrock AgentCore resources.
+> **Community module** — not affiliated with or endorsed by AWS.
+> Published on the [Terraform Registry](https://registry.terraform.io/modules/LuisOsuna117/agentcore/aws) and the [OpenTofu Registry](https://search.opentofu.org/module/LuisOsuna117/agentcore/aws). Compatible with both **Terraform ≥ 1.8** and **OpenTofu ≥ 1.8**.
 
-> **Community module:** maintained independently by
-> [LuisOsuna117](https://github.com/LuisOsuna117). It is not affiliated with or
-> endorsed by AWS, HashiCorp, or the OpenTofu project.
+A Terraform / OpenTofu module that provisions [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html) resources on AWS, together with the supporting infrastructure needed to build and deploy containerised agents.
 
-The root module provides one composable interface for Runtime, Gateway,
-Policy, Identity, Memory, Browser, Code Interpreter, Harness, Evaluations,
-Registry Preview, and observability resources. It supports Terraform and
-OpenTofu.
+**Easy to start, extensible for production.** One required variable (`name`) gets a working runtime. A set of clearly named `create_*` boolean flags let you opt-in to additional resources — without forking the module or fighting the abstractions.
 
-## Features
+---
 
-Every capability is opt-in. All resource maps default to `{}`, so providing
-only `name` creates no resources.
-
-- Runtime and immutable Runtime endpoints with `AWS_IAM` or `CUSTOM_JWT` authentication.
-- Opt-in ECR, S3, and CodeBuild image pipelines with CI-driven or apply-time triggers.
-- Gateway targets, path rules, JWT passthrough, IAM credentials, and Policy Engine `ENFORCE` mode.
-- AgentCore Identity workload identities and write-only API key and OAuth2 credential providers.
-- Memory strategies, Browser profiles, Code Interpreter, and Managed Harness environments.
-- Evaluators, online evaluations, and CloudWatch observability log groups.
-- Resource policies and caller-defined least-privilege IAM statements with module resource references.
-- Safe module defaults: no FullAccess attachment, wildcard action, CLI mutation, build trigger, or secret output.
-- Standard `name`, `create`, and `tags` inputs. Resource names default from the module name and map key.
-
-## Usage
+## 🚀 Quickstart
 
 ```hcl
 module "agentcore" {
   source  = "LuisOsuna117/agentcore/aws"
-  version = "~> 1.0"
+  version = "~> 0.3"
 
-  name = "customer-support"
-
-  runtimes = {
-    primary = {
-      role_arn       = aws_iam_role.runtime.arn
-      image_uri      = "111122223333.dkr.ecr.us-east-1.amazonaws.com/agent@sha256:..."
-      authentication = "AWS_IAM"
-    }
-  }
-
-  tags = {
-    Environment = "production"
-    Terraform   = "true"
-  }
+  name = "my-agent"
 }
 ```
 
-The module expects purpose-built IAM roles. Supply an immutable ARM64
-`image_uri`, or opt into an `image_builds` entry when the module should produce
-the container with CodeBuild. It never attaches broad managed policies.
+Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terraform apply` (or `tofu apply`). That's it.
 
-## Examples
+> **Windows or CI without bash?** Set `trigger_build_on_apply = false` and use the `codebuild_start_build_command` output to drive builds from your pipeline — or skip the build entirely with `create_build_pipeline = false` and a pre-built `image_uri`.
 
-- [Basic Runtime](examples/basic): one IAM-authenticated Runtime.
-- [Dual-lane Gateways](examples/dual-lane-gateways): separate JWT and IAM Gateway-to-Runtime paths with Policy enforcement.
-- [AgentCore Identity](examples/identity): workload identity and write-only OAuth2 credentials.
-- [Agent image build](examples/image-build): ECR, S3, and CodeBuild without creating a Runtime.
-- [Memory](examples/memory): one Memory and semantic strategy.
-- [Browser](examples/browser): one Browser and reusable Browser Profile.
-- [Code Interpreter](examples/code-interpreter): one no-network sandbox.
-- [Observability](examples/observability): one retained telemetry log group.
+> **MMDSv2 apply prerequisite:** since June 30, 2026, AgentCore rejects invocations of runtimes without MMDSv2. While `hashicorp/aws` does not expose AgentCore Runtime `metadataConfiguration`, the module enforces `requireMMDSV2 = true` with `UpdateAgentRuntime`. The machine running `apply` needs an AWS CLI v2 release that includes `bedrock-agentcore-control update-agent-runtime` and `--metadata-configuration` (AWS CLI v2.35+ recommended).
 
-## Design
+---
 
-The root module is the primary, opinionated entrypoint. Features are enabled by
-adding entries only to their corresponding maps; there are no implicit feature
-bundles or duplicated `enable_*` flags. A map item's `name` is optional and
-defaults to the root `name` plus its key. Set `create = false` to make the
-entire module a no-op.
+## ✅ Features
 
-Nested modules are limited to distinct ownership boundaries:
+- ✅ **Single required variable** — only `name` is mandatory; every other input has a safe default.
+- 🐳 **Bring Your Own Image (BYO)** — set `create_build_pipeline = false` and pass `image_uri` to skip the CodeBuild pipeline entirely.
+- 🔗 **Decoupled build trigger** — set `trigger_build_on_apply = false` to manage CodeBuild runs from your own CI/CD pipeline.
+- ⚙️ **Runtime toggle** — set `create_runtime = false` to provision only the build infrastructure while the AgentCore runtime is not yet needed.
+- �️ **VPC mode** — set `network_mode = "VPC"` and supply `vpc_subnet_ids` / `vpc_security_group_ids` to run the runtime inside your VPC without a public endpoint.
+- 🔐 **JWT authorizer** — set `authorizer_discovery_url` to protect the runtime endpoint with OIDC/JWT auth, scoped by audience and client ID.
+- ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
+- 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
+- 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
+- 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
+- 🌐 **General Gateway targets** — set `create_gateway = true` and use `gateway_targets` with `target_type = "AGENT"` for direct AgentCore Runtime routing or `target_type = "MCP"` for MCP aggregation.
+- 🔑 **Execution role escape hatch** — bring your own IAM role or let the module create one.
+- 🔒 **Extensible IAM** — append inline statements with `additional_iam_statements` or attach existing managed policies with `additional_iam_policy_arns`.
+- 🛡️ **MMDSv2 enforcement** — requires microVM Metadata Service v2 by default through a temporary `UpdateAgentRuntime` compatibility bridge.
+- 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
+- 🏷️ **Consistent tagging** — a `tags` map is merged onto every taggable resource alongside module-managed defaults.
+- ✅ **Validated inputs** — naming patterns, enum values, and numeric bounds are enforced by `validation` blocks before any plan is generated.
 
-- `modules/build` owns the optional ECR, S3, IAM, and CodeBuild image supply chain.
-- `modules/preview` accepts caller-owned CloudFormation for AgentCore features not yet available in the AWS provider.
-- `modules/agent-registry-preview` implements shadow-only Agent Registry discovery until a native AWS provider resource is available.
+---
 
-The preview modules are not authorization sources. Individual AgentCore
-resources are not hidden behind one-resource wrappers.
+## 🧱 Module structure
 
-## AgentCore Identity
-
-`workload_identities`, `api_key_credential_providers`, and
-`oauth2_credential_providers` expose AgentCore Identity directly. Credential
-values use AWS provider write-only fields and are never returned. Provider ARNs
-are normal identifiers. Supply credentials through your secret-injection
-workflow and rotate them by increasing their version input.
-
-Runtime and Gateway workload identity ARNs are also returned in the respective
-module outputs.
-
-## Agent image builds
-
-`image_builds` creates no resources by default. Each entry packages one source
-directory, uploads the content-addressed archive to S3, builds an ARM64 image
-with CodeBuild, and publishes it to its own ECR repository. Builds are driven
-externally by default; set `trigger_build_on_apply = true` only when the
-Terraform executor has Bash and AWS CLI v2.
-
-A Runtime selects exactly one caller-provided `image_uri` or one
-`image_build_key`. This keeps image production independent while allowing an
-opted-in build and Runtime to compose in a single module call.
-
-## Security
-
-- Authentication mode is explicit for every Runtime and Gateway.
-- JWT `Authorization` propagation is handled by AgentCore and cannot be added to the custom header allowlist.
-- Gateway policy engines are attached in `ENFORCE` mode.
-- IAM permission helpers reject wildcard actions and resources.
-- API key and OAuth credentials use write-only provider arguments and are never output; only their provider ARNs are exposed.
-- Code Interpreter defaults to `SANDBOX`; VPC resources require both subnets and security groups.
-- Registry Preview is shadow-only and cannot grant Runtime authority.
-
-## Development
-
-Install the repository's pre-commit hooks, then use the standard OpenTofu
-workflow:
-
-```bash
-pre-commit install
-pre-commit run --all-files
-tofu init -backend=false
-tofu validate
-tofu test
+```
+.
+├── main.tf          # Root wrapper — orchestrates all submodules
+├── variables.tf
+├── outputs.tf
+├── versions.tf
+└── modules/
+    ├── build/            # ECR + S3 + CodeBuild + IAM (create_build_pipeline = true)
+    ├── runtime/          # aws_bedrockagentcore_agent_runtime
+    ├── code-interpreter/ # aws_bedrockagentcore_code_interpreter (opt-in)
+    ├── memory/           # aws_bedrockagentcore_memory (create_memory = true)
+    └── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
 ```
 
-CI also validates every example, runs TFLint and Trivy, checks generated
-terraform-docs output, and verifies release-note rendering.
+Each submodule under `modules/` can also be called independently if you only need a subset of resources.
 
-## Contributing
+---
 
-Issues and pull requests are welcome. Keep examples executable, document every
-public variable and output, and include a mocked OpenTofu test for behavioral
-changes.
+## 🧩 What this module creates
 
-## License
+Resources marked with a condition are only created when the corresponding flag is `true`.
 
-Apache-2.0 Licensed. See [LICENSE](LICENSE).
+| Resource | Condition | Purpose |
+|---------------------------------------------|------------------------------------------------------|-----------------------------------------------------------------------|
+| `aws_iam_role` (execution) | `create_execution_role = true` | Execution role assumed by AgentCore Runtime and, by default, Code Interpreter. |
+| `aws_iam_role_policy` (execution) | `create_execution_role = true` | Least-privilege inline policy: ECR pull, CloudWatch Logs, X-Ray, Metrics, Bedrock, workload tokens. |
+| `aws_iam_role_policy_attachment` | `create_execution_role && attach_bedrock_fullaccess_policy` | Optional `BedrockAgentCoreFullAccess` managed policy attachment. |
+| `aws_iam_role_policy_attachment` (additional) | `create_execution_role && length(additional_iam_policy_arns) > 0` | Attaches caller-supplied managed policies to the execution role. |
+| `aws_bedrockagentcore_agent_runtime` | `create_runtime = true` | The AgentCore runtime that executes your agent container. |
+| `local_sensitive_file` + `terraform_data` | `create_runtime && runtime_metadata_configuration != null` | Applies `metadataConfiguration.requireMMDSV2` with `UpdateAgentRuntime` until the AWS provider supports it natively. |
+| `aws_bedrockagentcore_code_interpreter` | `create_code_interpreter = true` | Isolated managed environment where the agent can execute code. |
+| `aws_iam_role_policy` (Code Interpreter invoke) | `create_runtime && create_code_interpreter && create_execution_role` | Grants the runtime role session access to the created Code Interpreter ARN. |
+| `aws_ecr_repository` + policies | `create_build_pipeline = true` | Private container registry for agent images. |
+| `aws_codebuild_project` | `create_build_pipeline = true` | Builds the agent Docker image and pushes it to ECR. |
+| `aws_iam_role` (codebuild) | `create_build_pipeline = true` | Service role for the CodeBuild pipeline. |
+| `aws_s3_bucket` + config | `create_build_pipeline = true` | Private versioned bucket for agent source code. |
+| `aws_s3_object` | `create_build_pipeline = true` | Content-addressed archive of your agent source directory. |
+| `null_resource` (build trigger) | `create_build_pipeline && trigger_build_on_apply` | Triggers a CodeBuild run on every apply when source code changes. |
+| `aws_bedrockagentcore_memory` | `create_memory = true` | Persistent memory store for your agent. |
+| `aws_bedrockagentcore_gateway` | `create_gateway = true` | General or MCP aggregation gateway endpoint with configurable auth and interceptors. |
+| `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
+| `aws_cloudformation_stack` (gateway target) | `create_gateway && length(gateway_targets) > 0` | Creates MCP aggregation or direct HTTP AgentCore Runtime targets. |
+| `aws_iam_role_policy` (gateway invoke) | `create_gateway && any target uses agent_runtime_arn` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on AgentCore Runtime base and runtime-endpoint ARNs. |
+
+## 🚫 What this module does NOT create
+
+- **VPC, subnets, or security groups** — when Runtime or Code Interpreter uses `VPC` mode, you must supply the corresponding subnet and security-group inputs; the VPC and its components are out of scope for this module.
+- **Bedrock model access** — enable foundation model access separately in the AWS console.
+- **KMS keys** — S3 and ECR use AWS-managed encryption by default. Pass `gateway_kms_key_arn` or `memory_encryption_key_arn` to use customer-managed keys you manage outside of this module.
+
+---
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
 | Name | Version |
 |------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.60, < 7.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.8 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.48 |
+| <a name="requirement_local"></a> [local](#requirement\_local) | >= 2.5 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.60, < 7.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.48 |
+| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_agent_registry_preview"></a> [agent\_registry\_preview](#module\_agent\_registry\_preview) | ./modules/agent-registry-preview | n/a |
-| <a name="module_image_build"></a> [image\_build](#module\_image\_build) | ./modules/build | n/a |
-| <a name="module_preview"></a> [preview](#module\_preview) | ./modules/preview | n/a |
+| <a name="module_build"></a> [build](#module\_build) | ./modules/build | n/a |
+| <a name="module_code_interpreter"></a> [code\_interpreter](#module\_code\_interpreter) | ./modules/code-interpreter | n/a |
+| <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
+| <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
+| <a name="module_runtime"></a> [runtime](#module\_runtime) | ./modules/runtime | n/a |
 
 ## Resources
 
 | Name | Type |
 |------|------|
-| [aws_bedrockagentcore_agent_runtime.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_agent_runtime) | resource |
-| [aws_bedrockagentcore_agent_runtime_endpoint.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_agent_runtime_endpoint) | resource |
-| [aws_bedrockagentcore_api_key_credential_provider.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_api_key_credential_provider) | resource |
-| [aws_bedrockagentcore_browser.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_browser) | resource |
-| [aws_bedrockagentcore_browser_profile.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_browser_profile) | resource |
-| [aws_bedrockagentcore_code_interpreter.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_code_interpreter) | resource |
-| [aws_bedrockagentcore_evaluator.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_evaluator) | resource |
-| [aws_bedrockagentcore_gateway.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_gateway) | resource |
-| [aws_bedrockagentcore_gateway_rule.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_gateway_rule) | resource |
-| [aws_bedrockagentcore_gateway_target.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_gateway_target) | resource |
-| [aws_bedrockagentcore_harness.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_harness) | resource |
-| [aws_bedrockagentcore_memory.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_memory) | resource |
-| [aws_bedrockagentcore_memory_strategy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_memory_strategy) | resource |
-| [aws_bedrockagentcore_oauth2_credential_provider.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_oauth2_credential_provider) | resource |
-| [aws_bedrockagentcore_online_evaluation_config.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_online_evaluation_config) | resource |
-| [aws_bedrockagentcore_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_policy) | resource |
-| [aws_bedrockagentcore_policy_engine.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_policy_engine) | resource |
-| [aws_bedrockagentcore_resource_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_resource_policy) | resource |
-| [aws_bedrockagentcore_workload_identity.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_workload_identity) | resource |
-| [aws_cloudwatch_log_group.observability](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
-| [aws_iam_role_policy.gateway](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
-| [aws_iam_role_policy.runtime](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
-| [aws_ssm_parameter.gateway_discovery](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_parameter) | resource |
+| [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.code_interpreter_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy_attachment.agent_execution_additional](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy_attachment.agent_execution_managed](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [terraform_data.validations](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
+| [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
+| [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_api_key_credential_providers"></a> [api\_key\_credential\_providers](#input\_api\_key\_credential\_providers) | AgentCore Identity API-key providers. The key is write-only and is never returned by this module. | <pre>map(object({<br/>    name               = optional(string)<br/>    api_key_write_only = string<br/>    secret_version     = number<br/>  }))</pre> | `{}` | no |
-| <a name="input_browser_profiles"></a> [browser\_profiles](#input\_browser\_profiles) | Reusable Browser profiles. | <pre>map(object({<br/>    name        = optional(string)<br/>    description = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_browsers"></a> [browsers](#input\_browsers) | AgentCore Browser sandboxes. VPC mode requires subnets and security groups. | <pre>map(object({<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    execution_role_arn = optional(string)<br/>    network_mode       = optional(string, "PUBLIC")<br/>    security_groups    = optional(set(string), [])<br/>    subnets            = optional(set(string), [])<br/>    browser_signing    = optional(bool, false)<br/>  }))</pre> | `{}` | no |
-| <a name="input_code_interpreters"></a> [code\_interpreters](#input\_code\_interpreters) | AgentCore Code Interpreter sandboxes. SANDBOX is the safe no-network default. | <pre>map(object({<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    execution_role_arn = optional(string)<br/>    network_mode       = optional(string, "SANDBOX")<br/>    security_groups    = optional(set(string), [])<br/>    subnets            = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_create"></a> [create](#input\_create) | Controls whether this module creates resources. | `bool` | `true` | no |
-| <a name="input_evaluators"></a> [evaluators](#input\_evaluators) | AgentCore evaluators. Configure exactly one of code\_based or llm\_judge. | <pre>map(object({<br/>    name        = optional(string)<br/>    level       = string<br/>    description = optional(string)<br/>    kms_key_arn = optional(string)<br/>    code_based = optional(object({<br/>      lambda_arn      = string<br/>      timeout_seconds = optional(number, 60)<br/>    }))<br/>    llm_judge = optional(object({<br/>      instructions = string<br/>      model_id     = string<br/>      max_tokens   = optional(number, 2048)<br/>      temperature  = optional(number, 0)<br/>      top_p        = optional(number, 1)<br/>      categories = list(object({<br/>        label      = string<br/>        definition = string<br/>      }))<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_gateway_discovery_parameters"></a> [gateway\_discovery\_parameters](#input\_gateway\_discovery\_parameters) | SSM parameters that publish generated Gateway URLs without creating Runtime/Gateway dependency cycles. | <pre>map(object({<br/>    gateway_key = string<br/>    name        = string<br/>    description = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_gateway_role_permissions"></a> [gateway\_role\_permissions](#input\_gateway\_role\_permissions) | Least-privilege inline policies attached to caller-owned Gateway roles. | <pre>map(object({<br/>    gateway_key = string<br/>    statements = list(object({<br/>      sid                    = string<br/>      actions                = set(string)<br/>      resources              = optional(set(string), [])<br/>      runtime_keys           = optional(set(string), [])<br/>      api_key_provider_keys  = optional(set(string), [])<br/>      oauth2_credential_keys = optional(set(string), [])<br/>      workload_identity_keys = optional(set(string), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_gateway_rules"></a> [gateway\_rules](#input\_gateway\_rules) | Path rules that route to a named target; optional IAM principals constrain workload routes. | <pre>map(object({<br/>    gateway_key    = string<br/>    priority       = number<br/>    paths          = list(string)<br/>    target_name    = string<br/>    description    = optional(string)<br/>    iam_principals = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | AgentCore Runtime or MCP-server Gateway targets with one explicit outbound credential mode. | <pre>map(object({<br/>    gateway_key               = string<br/>    name                      = optional(string)<br/>    target_type               = string<br/>    runtime_key               = optional(string)<br/>    runtime_arn               = optional(string)<br/>    qualifier                 = optional(string, "DEFAULT")<br/>    mcp_endpoint              = optional(string)<br/>    mcp_listing_mode          = optional(string)<br/>    credential_mode           = string<br/>    signing_service           = optional(string, "bedrock-agentcore")<br/>    signing_region            = optional(string)<br/>    credential_provider_key   = optional(string)<br/>    credential_provider_arn   = optional(string)<br/>    credential_location       = optional(string, "HEADER")<br/>    credential_parameter_name = optional(string)<br/>    credential_prefix         = optional(string)<br/>    oauth_grant_type          = optional(string)<br/>    oauth_scopes              = optional(set(string), [])<br/>    oauth_default_return_url  = optional(string)<br/>    oauth_custom_parameters   = optional(map(string), {})<br/>    description               = optional(string)<br/>    allowed_query_parameters  = optional(set(string), [])<br/>    allowed_request_headers   = optional(set(string), [])<br/>    allowed_response_headers  = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_gateways"></a> [gateways](#input\_gateways) | AgentCore Gateways. An attached policy engine always runs in ENFORCE mode. | <pre>map(object({<br/>    name              = optional(string)<br/>    role_arn          = string<br/>    authentication    = string<br/>    description       = optional(string)<br/>    kms_key_arn       = optional(string)<br/>    exception_level   = optional(string)<br/>    policy_engine_key = optional(string)<br/>    protocol_type     = optional(string)<br/>    jwt = optional(object({<br/>      discovery_url               = string<br/>      allowed_audience            = optional(set(string), [])<br/>      allowed_clients             = optional(set(string), [])<br/>      allowed_scopes              = optional(set(string), [])<br/>      allowed_workload_identities = optional(list(string), [])<br/>      claims = optional(list(object({<br/>        name         = string<br/>        value_type   = string<br/>        operator     = string<br/>        string_value = optional(string)<br/>        string_list  = optional(set(string), [])<br/>      })), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_harnesses"></a> [harnesses](#input\_harnesses) | Managed Harness configurations for non-production experimentation without effect tools. | <pre>map(object({<br/>    name                  = optional(string)<br/>    execution_role_arn    = string<br/>    image_uri             = string<br/>    model_id              = string<br/>    system_prompt         = string<br/>    environment_variables = optional(map(string), {})<br/>    network_mode          = optional(string, "PUBLIC")<br/>    security_groups       = optional(set(string), [])<br/>    subnets               = optional(set(string), [])<br/>    require_s3_endpoint   = optional(bool, false)<br/>    idle_timeout_seconds  = optional(number)<br/>    max_lifetime_seconds  = optional(number)<br/>    allowed_tools         = optional(set(string), [])<br/>    max_iterations        = optional(number, 10)<br/>    max_tokens            = optional(number, 8192)<br/>    timeout_seconds       = optional(number, 900)<br/>    temperature           = optional(number, 0)<br/>    top_p                 = optional(number, 1)<br/>  }))</pre> | `{}` | no |
-| <a name="input_image_builds"></a> [image\_builds](#input\_image\_builds) | Opt-in CodeBuild pipelines that package agent source, build an ARM64 container, and publish it to ECR. | <pre>map(object({<br/>    name                        = optional(string)<br/>    source_dir                  = string<br/>    image_tag                   = optional(string, "latest")<br/>    ecr_repository_name         = optional(string)<br/>    ecr_image_tag_mutability    = optional(string, "MUTABLE")<br/>    ecr_scan_on_push            = optional(bool, true)<br/>    ecr_lifecycle_keep_count    = optional(number, 10)<br/>    ecr_force_delete            = optional(bool, false)<br/>    ecr_pull_principals         = optional(list(string), [])<br/>    source_bucket_force_destroy = optional(bool, false)<br/>    codebuild_compute_type      = optional(string, "BUILD_GENERAL1_LARGE")<br/>    codebuild_environment_image = optional(string, "aws/codebuild/amazonlinux2-aarch64-standard:3.0")<br/>    codebuild_environment_type  = optional(string, "ARM_CONTAINER")<br/>    codebuild_build_timeout     = optional(number, 60)<br/>    trigger_build_on_apply      = optional(bool, false)<br/>  }))</pre> | `{}` | no |
-| <a name="input_memories"></a> [memories](#input\_memories) | AgentCore Memory stores. Namespace content is never an authority source. | <pre>map(object({<br/>    name                      = optional(string)<br/>    event_expiry_duration     = number<br/>    description               = optional(string)<br/>    encryption_key_arn        = optional(string)<br/>    memory_execution_role_arn = optional(string)<br/>    indexed_keys = optional(list(object({<br/>      key  = string<br/>      type = string<br/>    })), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_memory_strategies"></a> [memory\_strategies](#input\_memory\_strategies) | Memory strategies attached to a module-managed Memory. | <pre>map(object({<br/>    memory_key                = string<br/>    name                      = optional(string)<br/>    type                      = string<br/>    description               = optional(string)<br/>    namespaces                = optional(list(string), [])<br/>    namespace_templates       = optional(list(string), [])<br/>    memory_execution_role_arn = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_name"></a> [name](#input\_name) | Name used as the default prefix for module-managed resources. | `string` | n/a | yes |
-| <a name="input_oauth2_credential_providers"></a> [oauth2\_credential\_providers](#input\_oauth2\_credential\_providers) | Custom AgentCore Identity OAuth2 providers. Client credentials are write-only and are never returned. | <pre>map(object({<br/>    name                     = optional(string)<br/>    client_id_write_only     = string<br/>    client_secret_write_only = string<br/>    credentials_version      = number<br/>    discovery_url            = optional(string)<br/>    issuer                   = optional(string)<br/>    authorization_endpoint   = optional(string)<br/>    token_endpoint           = optional(string)<br/>    response_types           = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_observability"></a> [observability](#input\_observability) | CloudWatch log groups used by AgentCore Observability, evaluations, and sanitized usage telemetry. | <pre>map(object({<br/>    log_group_name    = string<br/>    retention_in_days = optional(number, 365)<br/>    kms_key_arn       = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_online_evaluations"></a> [online\_evaluations](#input\_online\_evaluations) | Online evaluation configs sourcing sanitized AgentCore telemetry from CloudWatch Logs. | <pre>map(object({<br/>    name                    = optional(string)<br/>    execution_role_arn      = string<br/>    evaluator_keys          = set(string)<br/>    log_group_names         = set(string)<br/>    service_names           = set(string)<br/>    sampling_percentage     = number<br/>    session_timeout_minutes = number<br/>    enable_on_create        = optional(bool, true)<br/>    description             = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_policies"></a> [policies](#input\_policies) | Cedar policies, normally generated tool-by-tool from the caller's security catalog. | <pre>map(object({<br/>    engine_key = string<br/>    name       = optional(string)<br/>    statement  = optional(string)<br/>    scoped = optional(object({<br/>      gateway_key    = string<br/>      principal_type = string<br/>      action_id      = string<br/>      condition      = optional(string)<br/>    }))<br/>    description     = optional(string)<br/>    validation_mode = optional(string, "FAIL_ON_ANY_FINDINGS")<br/>  }))</pre> | `{}` | no |
-| <a name="input_policy_engines"></a> [policy\_engines](#input\_policy\_engines) | AgentCore Cedar policy engines. | <pre>map(object({<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    encryption_key_arn = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_preview_stacks"></a> [preview\_stacks](#input\_preview\_stacks) | Isolated CloudFormation stacks for AgentCore Preview resources absent from the AWS provider. Templates must reference secrets externally. | <pre>map(object({<br/>    name          = optional(string)<br/>    template_body = string<br/>    parameters    = optional(map(string), {})<br/>    capabilities  = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_registries"></a> [registries](#input\_registries) | AWS Agent Registry Preview catalogs in the current agent-registry namespace, isolated behind CloudFormation until the AWS provider exposes a native resource. | <pre>map(object({<br/>    name               = optional(string)<br/>    log_retention_days = optional(number, 365)<br/>  }))</pre> | `{}` | no |
-| <a name="input_resource_policies"></a> [resource\_policies](#input\_resource\_policies) | Resource policies for runtimes, gateways, and other AgentCore resources. | <pre>map(object({<br/>    resource_arn  = optional(string)<br/>    resource_type = optional(string)<br/>    resource_key  = optional(string)<br/>    policy        = optional(string)<br/>    principals    = optional(set(string), [])<br/>    actions       = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
-| <a name="input_runtime_endpoints"></a> [runtime\_endpoints](#input\_runtime\_endpoints) | Named immutable Runtime endpoints. | <pre>map(object({<br/>    runtime_key     = string<br/>    name            = optional(string)<br/>    description     = optional(string)<br/>    runtime_version = optional(string)<br/>  }))</pre> | `{}` | no |
-| <a name="input_runtime_role_permissions"></a> [runtime\_role\_permissions](#input\_runtime\_role\_permissions) | Least-privilege inline policies attached to caller-owned Runtime roles, with module resource references resolved without cycles. | <pre>map(object({<br/>    runtime_key = string<br/>    statements = list(object({<br/>      sid                    = string<br/>      actions                = set(string)<br/>      resources              = optional(set(string), [])<br/>      gateway_keys           = optional(set(string), [])<br/>      memory_keys            = optional(set(string), [])<br/>      code_interpreter_keys  = optional(set(string), [])<br/>      browser_keys           = optional(set(string), [])<br/>      gateway_parameter_keys = optional(set(string), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_runtimes"></a> [runtimes](#input\_runtimes) | AgentCore Runtimes. Authentication is explicit per runtime; CUSTOM\_JWT and AWS\_IAM cannot be combined. | <pre>map(object({<br/>    name                            = optional(string)<br/>    role_arn                        = string<br/>    image_uri                       = optional(string)<br/>    image_build_key                 = optional(string)<br/>    authentication                  = string<br/>    description                     = optional(string)<br/>    environment_variables           = optional(map(string), {})<br/>    gateway_url_environment         = optional(map(string), {})<br/>    memory_id_environment           = optional(map(string), {})<br/>    browser_id_environment          = optional(map(string), {})<br/>    browser_profile_id_environment  = optional(map(string), {})<br/>    code_interpreter_id_environment = optional(map(string), {})<br/>    network_mode                    = optional(string, "PUBLIC")<br/>    security_groups                 = optional(set(string), [])<br/>    subnets                         = optional(set(string), [])<br/>    server_protocol                 = optional(string, "HTTP")<br/>    request_headers                 = optional(set(string), [])<br/>    idle_timeout_seconds            = optional(number, 900)<br/>    max_lifetime_seconds            = optional(number, 28800)<br/>    jwt = optional(object({<br/>      discovery_url               = string<br/>      allowed_audience            = optional(set(string), [])<br/>      allowed_clients             = optional(set(string), [])<br/>      allowed_scopes              = optional(set(string), [])<br/>      allowed_gateway_arn         = optional(string)<br/>      allowed_gateway_key         = optional(string)<br/>      allowed_workload_identities = optional(list(string), [])<br/>      claims = optional(list(object({<br/>        name         = string<br/>        value_type   = string<br/>        operator     = string<br/>        string_value = optional(string)<br/>        string_list  = optional(set(string), [])<br/>      })), [])<br/>    }))<br/>  }))</pre> | `{}` | no |
-| <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to every taggable resource. | `map(string)` | `{}` | no |
-| <a name="input_workload_identities"></a> [workload\_identities](#input\_workload\_identities) | AgentCore workload identities for outbound authentication. | <pre>map(object({<br/>    name                      = optional(string)<br/>    allowed_oauth_return_urls = optional(set(string), [])<br/>  }))</pre> | `{}` | no |
+| <a name="input_additional_iam_policy_arns"></a> [additional\_iam\_policy\_arns](#input\_additional\_iam\_policy\_arns) | Additional managed IAM policy ARNs to attach to the module-created execution role. Ignored when create\_execution\_role = false. | `set(string)` | `[]` | no |
+| <a name="input_additional_iam_statements"></a> [additional\_iam\_statements](#input\_additional\_iam\_statements) | Additional IAM policy statements to append to the inline policy on the execution role. Use this to grant access to Bedrock models, Secrets Manager, or other services your agent code requires. | `list(any)` | `[]` | no |
+| <a name="input_agent_source_dir"></a> [agent\_source\_dir](#input\_agent\_source\_dir) | Absolute or module-relative path to the directory containing your agent application code. The directory is zipped and uploaded to S3 for CodeBuild to consume. | `string` | `null` | no |
+| <a name="input_allow_bedrock_invoke_all"></a> [allow\_bedrock\_invoke\_all](#input\_allow\_bedrock\_invoke\_all) | When true (default), the inline execution role policy includes bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource "*". Set to false to remove this broad statement and supply model-specific permissions via additional\_iam\_statements (recommended for production). | `bool` | `true` | no |
+| <a name="input_allow_workload_access_token_for_user_id"></a> [allow\_workload\_access\_token\_for\_user\_id](#input\_allow\_workload\_access\_token\_for\_user\_id) | When true (default), allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny so broad managed policies such as BedrockAgentCoreFullAccess cannot re-enable it. | `bool` | `true` | no |
+| <a name="input_attach_bedrock_fullaccess_policy"></a> [attach\_bedrock\_fullaccess\_policy](#input\_attach\_bedrock\_fullaccess\_policy) | When true and create\_execution\_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional\_iam\_statements. | `bool` | `true` | no |
+| <a name="input_authorizer_allowed_audience"></a> [authorizer\_allowed\_audience](#input\_authorizer\_allowed\_audience) | Set of allowed JWT audience values. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
+| <a name="input_authorizer_allowed_clients"></a> [authorizer\_allowed\_clients](#input\_authorizer\_allowed\_clients) | Set of allowed client IDs for JWT token validation. Ignored when authorizer\_discovery\_url is null. | `list(string)` | `[]` | no |
+| <a name="input_authorizer_discovery_url"></a> [authorizer\_discovery\_url](#input\_authorizer\_discovery\_url) | OIDC discovery URL for JWT authorisation on the runtime endpoint (must end with /.well-known/openid-configuration). When null, the endpoint is unauthenticated at the AgentCore layer. | `string` | `null` | no |
+| <a name="input_code_interpreter_description"></a> [code\_interpreter\_description](#input\_code\_interpreter\_description) | Human-readable description for the AgentCore Code Interpreter. | `string` | `"Managed by terraform-aws-agentcore."` | no |
+| <a name="input_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#input\_code\_interpreter\_execution\_role\_arn) | ARN of an IAM role for the Code Interpreter to assume. Defaults to the runtime execution role managed or supplied through execution\_role\_arn. | `string` | `null` | no |
+| <a name="input_code_interpreter_name"></a> [code\_interpreter\_name](#input\_code\_interpreter\_name) | Name for the AgentCore Code Interpreter. Defaults to var.name. Hyphens are automatically converted to underscores. | `string` | `null` | no |
+| <a name="input_code_interpreter_network_mode"></a> [code\_interpreter\_network\_mode](#input\_code\_interpreter\_network\_mode) | Network mode for the Code Interpreter. SANDBOX allows limited AWS service access, PUBLIC allows internet access, and VPC uses the supplied VPC configuration. | `string` | `"SANDBOX"` | no |
+| <a name="input_code_interpreter_vpc_security_group_ids"></a> [code\_interpreter\_vpc\_security\_group\_ids](#input\_code\_interpreter\_vpc\_security\_group\_ids) | Security group IDs attached to the Code Interpreter when code\_interpreter\_network\_mode = "VPC". | `list(string)` | `[]` | no |
+| <a name="input_code_interpreter_vpc_subnet_ids"></a> [code\_interpreter\_vpc\_subnet\_ids](#input\_code\_interpreter\_vpc\_subnet\_ids) | Subnet IDs where the Code Interpreter is placed when code\_interpreter\_network\_mode = "VPC". | `list(string)` | `[]` | no |
+| <a name="input_codebuild_build_timeout"></a> [codebuild\_build\_timeout](#input\_codebuild\_build\_timeout) | Maximum duration (in minutes) for a CodeBuild build before it is terminated. | `number` | `60` | no |
+| <a name="input_codebuild_compute_type"></a> [codebuild\_compute\_type](#input\_codebuild\_compute\_type) | Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html | `string` | `"BUILD_GENERAL1_LARGE"` | no |
+| <a name="input_codebuild_environment_image"></a> [codebuild\_environment\_image](#input\_codebuild\_environment\_image) | Docker image used for the CodeBuild build environment. | `string` | `"aws/codebuild/amazonlinux2-aarch64-standard:3.0"` | no |
+| <a name="input_codebuild_environment_type"></a> [codebuild\_environment\_type](#input\_codebuild\_environment\_type) | CodeBuild environment type. Should match the architecture of codebuild\_environment\_image (e.g. ARM\_CONTAINER for aarch64 images). | `string` | `"ARM_CONTAINER"` | no |
+| <a name="input_create_build_pipeline"></a> [create\_build\_pipeline](#input\_create\_build\_pipeline) | When true (default), creates the full CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. Set to false to use a pre-built image via image\_uri (Bring Your Own Image). | `bool` | `true` | no |
+| <a name="input_create_code_interpreter"></a> [create\_code\_interpreter](#input\_create\_code\_interpreter) | When true, creates an AgentCore Code Interpreter alongside the runtime. | `bool` | `false` | no |
+| <a name="input_create_execution_role"></a> [create\_execution\_role](#input\_create\_execution\_role) | When true, the module creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Set to false to provide an existing role via execution\_role\_arn. | `bool` | `true` | no |
+| <a name="input_create_gateway"></a> [create\_gateway](#input\_create\_gateway) | When true, creates an AgentCore Gateway resource using modules/gateway. Defaults to false. | `bool` | `false` | no |
+| <a name="input_create_memory"></a> [create\_memory](#input\_create\_memory) | When true, creates an AgentCore Memory resource using modules/memory. Defaults to false. | `bool` | `false` | no |
+| <a name="input_create_runtime"></a> [create\_runtime](#input\_create\_runtime) | When true (default), creates the AgentCore runtime resource. Set to false to provision only the build pipeline infrastructure without a runtime (useful for pre-baking images before the runtime is ready). | `bool` | `true` | no |
+| <a name="input_description"></a> [description](#input\_description) | Human-readable description attached to the AgentCore runtime resource. | `string` | `"Managed by terraform-aws-agentcore."` | no |
+| <a name="input_ecr_force_delete"></a> [ecr\_force\_delete](#input\_ecr\_force\_delete) | Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
+| <a name="input_ecr_image_tag_mutability"></a> [ecr\_image\_tag\_mutability](#input\_ecr\_image\_tag\_mutability) | Tag mutability setting for the ECR repository. IMMUTABLE is recommended for production to prevent image overwrites. | `string` | `"MUTABLE"` | no |
+| <a name="input_ecr_lifecycle_keep_count"></a> [ecr\_lifecycle\_keep\_count](#input\_ecr\_lifecycle\_keep\_count) | Number of most-recent images to retain in the ECR repository. Older images are expired automatically. | `number` | `10` | no |
+| <a name="input_ecr_pull_principals"></a> [ecr\_pull\_principals](#input\_ecr\_pull\_principals) | List of IAM principal ARNs allowed to pull images from the ECR repository. Defaults to the current account root (arn:aws:iam::<account\_id>:root) when empty, preserving the previous behaviour. Use this to enable cross-account or cross-org pulls. | `list(string)` | `[]` | no |
+| <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
+| <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
+| <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set; BEDROCK\_AGENTCORE\_CODE\_INTERPRETER\_ID is also set when create\_code\_interpreter = true. | `map(string)` | `{}` | no |
+| <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_runtime = true and create\_execution\_role = false. | `string` | `null` | no |
+| <a name="input_gateway_attach_runtime_target"></a> [gateway\_attach\_runtime\_target](#input\_gateway\_attach\_runtime\_target) | When true, attach the runtime created by this module call as a Gateway Target. Uses key "runtime". The target type comes from gateway\_runtime\_target.target\_type, or is inferred from the gateway/runtime configuration. | `bool` | `false` | no |
+| <a name="input_gateway_authorizer_configuration"></a> [gateway\_authorizer\_configuration](#input\_gateway\_authorizer\_configuration) | JWT authorizer configuration. Required when gateway\_authorizer\_type = "CUSTOM\_JWT". Shape: { discovery\_url, allowed\_audience, allowed\_clients }. | <pre>object({<br/>    discovery_url    = string<br/>    allowed_audience = optional(list(string), [])<br/>    allowed_clients  = optional(list(string), [])<br/>  })</pre> | `null` | no |
+| <a name="input_gateway_authorizer_type"></a> [gateway\_authorizer\_type](#input\_gateway\_authorizer\_type) | Gateway request authorizer type. "CUSTOM\_JWT" requires gateway\_authorizer\_configuration. "AWS\_IAM" uses SigV4. | `string` | `"AWS_IAM"` | no |
+| <a name="input_gateway_create_role"></a> [gateway\_create\_role](#input\_gateway\_create\_role) | When true, the gateway module creates an IAM role. Set to false and supply gateway\_role\_arn to reuse an existing role. | `bool` | `true` | no |
+| <a name="input_gateway_description"></a> [gateway\_description](#input\_gateway\_description) | Human-readable description for the Gateway resource. | `string` | `null` | no |
+| <a name="input_gateway_exception_level"></a> [gateway\_exception\_level](#input\_gateway\_exception\_level) | Exception detail level exposed via the gateway. Valid values: INFO, WARN, ERROR. | `string` | `null` | no |
+| <a name="input_gateway_interceptor_configurations"></a> [gateway\_interceptor\_configurations](#input\_gateway\_interceptor\_configurations) | List of interceptor configurations (max 2). Each: { interception\_points, lambda\_arn, pass\_request\_headers }. | <pre>list(object({<br/>    interception_points  = list(string)<br/>    lambda_arn           = string<br/>    pass_request_headers = optional(bool, false)<br/>  }))</pre> | `[]` | no |
+| <a name="input_gateway_kms_key_arn"></a> [gateway\_kms\_key\_arn](#input\_gateway\_kms\_key\_arn) | ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used. | `string` | `null` | no |
+| <a name="input_gateway_mcp_targets"></a> [gateway\_mcp\_targets](#input\_gateway\_mcp\_targets) | Deprecated compatibility alias for MCP Gateway Targets. Prefer gateway\_targets with target\_type = "MCP". | <pre>map(object({<br/>    name                     = optional(string)<br/>    description              = optional(string)<br/>    endpoint                 = optional(string)<br/>    agent_runtime_arn        = optional(string)<br/>    qualifier                = optional(string, "DEFAULT")<br/>    allowed_query_parameters = optional(list(string), [])<br/>    allowed_request_headers  = optional(list(string), [])<br/>    allowed_response_headers = optional(list(string), [])<br/>  }))</pre> | `{}` | no |
+| <a name="input_gateway_name"></a> [gateway\_name](#input\_gateway\_name) | Name for the AgentCore Gateway resource. Defaults to var.name when null. | `string` | `null` | no |
+| <a name="input_gateway_protocol_configuration"></a> [gateway\_protocol\_configuration](#input\_gateway\_protocol\_configuration) | MCP protocol configuration. Shape: { instructions, search\_type, supported\_versions }. | <pre>object({<br/>    instructions       = optional(string)<br/>    search_type        = optional(string)<br/>    supported_versions = optional(list(string), [])<br/>  })</pre> | `null` | no |
+| <a name="input_gateway_protocol_type"></a> [gateway\_protocol\_type](#input\_gateway\_protocol\_type) | Optional gateway aggregation protocol. Set to "MCP" for MCP aggregation, or null for general HTTP targets such as AgentCore Runtime agents. MCP is inferred when an MCP target is configured. | `string` | `null` | no |
+| <a name="input_gateway_role_arn"></a> [gateway\_role\_arn](#input\_gateway\_role\_arn) | ARN of an existing IAM role for the gateway. Required when gateway\_create\_role = false. | `string` | `null` | no |
+| <a name="input_gateway_runtime_target"></a> [gateway\_runtime\_target](#input\_gateway\_runtime\_target) | Configuration for the module-created runtime Gateway Target when gateway\_attach\_runtime\_target = true. target\_type accepts MCP or AGENT; when null, MCP is selected only for an explicitly MCP gateway or MCP runtime, otherwise AGENT. | <pre>object({<br/>    target_type = optional(string)<br/>    name        = optional(string)<br/>    description = optional(string)<br/>    qualifier   = optional(string, "DEFAULT")<br/>    schema = optional(object({<br/>      inline_payload = optional(string)<br/>      s3 = optional(object({<br/>        uri                     = string<br/>        bucket_owner_account_id = optional(string)<br/>      }))<br/>    }))<br/>    allowed_query_parameters = optional(list(string), [])<br/>    allowed_request_headers  = optional(list(string), [])<br/>    allowed_response_headers = optional(list(string), [])<br/>  })</pre> | `{}` | no |
+| <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | Map of general Gateway Targets. Set target\_type to "MCP" or "AGENT". MCP targets use endpoint or agent\_runtime\_arn; AGENT targets require agent\_runtime\_arn and route directly without MCP aggregation. | <pre>map(object({<br/>    target_type       = string<br/>    name              = optional(string)<br/>    description       = optional(string)<br/>    endpoint          = optional(string)<br/>    agent_runtime_arn = optional(string)<br/>    qualifier         = optional(string, "DEFAULT")<br/>    schema = optional(object({<br/>      inline_payload = optional(string)<br/>      s3 = optional(object({<br/>        uri                     = string<br/>        bucket_owner_account_id = optional(string)<br/>      }))<br/>    }))<br/>    allowed_query_parameters = optional(list(string), [])<br/>    allowed_request_headers  = optional(list(string), [])<br/>    allowed_response_headers = optional(list(string), [])<br/>  }))</pre> | `{}` | no |
+| <a name="input_idle_runtime_session_timeout"></a> [idle\_runtime\_session\_timeout](#input\_idle\_runtime\_session\_timeout) | Idle session timeout in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
+| <a name="input_image_tag"></a> [image\_tag](#input\_image\_tag) | Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger\_build\_on\_apply = true. | `string` | `"latest"` | no |
+| <a name="input_image_uri"></a> [image\_uri](#input\_image\_uri) | Full container image URI (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3) to deploy to the runtime. Required when create\_runtime = true and create\_build\_pipeline = false. Must be null when create\_build\_pipeline = true. | `string` | `null` | no |
+| <a name="input_max_lifetime"></a> [max\_lifetime](#input\_max\_lifetime) | Maximum instance lifetime in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
+| <a name="input_memory_description"></a> [memory\_description](#input\_memory\_description) | Human-readable description for the Memory resource. | `string` | `null` | no |
+| <a name="input_memory_encryption_key_arn"></a> [memory\_encryption\_key\_arn](#input\_memory\_encryption\_key\_arn) | ARN of the KMS key used to encrypt memory data. When null, AWS-managed encryption is used. | `string` | `null` | no |
+| <a name="input_memory_event_expiry_duration"></a> [memory\_event\_expiry\_duration](#input\_memory\_event\_expiry\_duration) | Number of days after which memory events expire (7–365). Required when create\_memory = true. Defaults to 90. | `number` | `90` | no |
+| <a name="input_memory_execution_role_arn"></a> [memory\_execution\_role\_arn](#input\_memory\_execution\_role\_arn) | ARN of the IAM role the memory service assumes. When null, the default service role is used. | `string` | `null` | no |
+| <a name="input_memory_name"></a> [memory\_name](#input\_memory\_name) | Name for the AgentCore Memory resource. Defaults to var.name when null. | `string` | `null` | no |
+| <a name="input_name"></a> [name](#input\_name) | Base name used as a prefix for all resources created by this module (e.g. "my-agent"). Must start with a letter, max 32 characters. | `string` | n/a | yes |
+| <a name="input_network_mode"></a> [network\_mode](#input\_network\_mode) | Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint publicly; VPC keeps traffic within your VPC via network\_mode\_config. | `string` | `"PUBLIC"` | no |
+| <a name="input_request_header_allowlist"></a> [request\_header\_allowlist](#input\_request\_header\_allowlist) | List of HTTP request headers to pass through to the runtime container. When empty, no additional headers are forwarded. | `list(string)` | `[]` | no |
+| <a name="input_runtime_metadata_configuration"></a> [runtime\_metadata\_configuration](#input\_runtime\_metadata\_configuration) | AgentCore Runtime microVM metadata configuration. require\_mmdsv2 maps to metadataConfiguration.requireMMDSV2. Until the AWS provider exposes this field, the runtime submodule applies it with UpdateAgentRuntime through the AWS CLI. Set to null only to disable the compatibility update. | <pre>object({<br/>    require_mmdsv2 = bool<br/>  })</pre> | <pre>{<br/>  "require_mmdsv2": true<br/>}</pre> | no |
+| <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API. | `string` | `null` | no |
+| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
+| <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
+| <a name="input_trigger_build_on_apply"></a> [trigger\_build\_on\_apply](#input\_trigger\_build\_on\_apply) | When true (default) and create\_build\_pipeline = true, a CodeBuild run is automatically started on every apply where source code, image\_tag, or ECR configuration changes. Set to false to manage builds out-of-band (CI/CD pipeline, manual console run). Ignored when create\_build\_pipeline = false. | `bool` | `true` | no |
+| <a name="input_vpc_security_group_ids"></a> [vpc\_security\_group\_ids](#input\_vpc\_security\_group\_ids) | Security group IDs attached to the runtime when network\_mode = "VPC". Must be in the same VPC as vpc\_subnet\_ids. | `list(string)` | `[]` | no |
+| <a name="input_vpc_subnet_ids"></a> [vpc\_subnet\_ids](#input\_vpc\_subnet\_ids) | Subnet IDs where the runtime is placed when network\_mode = "VPC". Use private subnets for least-privilege network design. | `list(string)` | `[]` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_api_key_credential_providers"></a> [api\_key\_credential\_providers](#output\_api\_key\_credential\_providers) | AgentCore API-key credential provider ARNs keyed by caller key. |
-| <a name="output_browser_profiles"></a> [browser\_profiles](#output\_browser\_profiles) | AgentCore Browser Profile identifiers and ARNs keyed by caller key. |
-| <a name="output_browsers"></a> [browsers](#output\_browsers) | AgentCore Browser identifiers and ARNs keyed by caller key. |
-| <a name="output_code_interpreters"></a> [code\_interpreters](#output\_code\_interpreters) | AgentCore Code Interpreter identifiers and ARNs keyed by caller key. |
-| <a name="output_evaluators"></a> [evaluators](#output\_evaluators) | AgentCore Evaluator identifiers and ARNs keyed by caller key. |
-| <a name="output_gateway_discovery_parameters"></a> [gateway\_discovery\_parameters](#output\_gateway\_discovery\_parameters) | SSM parameter names and ARNs that publish Gateway URLs. |
-| <a name="output_gateway_rules"></a> [gateway\_rules](#output\_gateway\_rules) | Gateway rule identifiers keyed by caller key. |
-| <a name="output_gateway_targets"></a> [gateway\_targets](#output\_gateway\_targets) | Gateway target identifiers keyed by caller key. |
-| <a name="output_gateways"></a> [gateways](#output\_gateways) | Gateway identifiers and invocation URLs keyed by caller key. |
-| <a name="output_harnesses"></a> [harnesses](#output\_harnesses) | AgentCore Harness identifiers and ARNs keyed by caller key. |
-| <a name="output_image_builds"></a> [image\_builds](#output\_image\_builds) | CodeBuild image pipelines and their ECR artifacts keyed by caller key. |
-| <a name="output_memories"></a> [memories](#output\_memories) | AgentCore Memory identifiers and ARNs keyed by caller key. |
-| <a name="output_memory_strategies"></a> [memory\_strategies](#output\_memory\_strategies) | AgentCore Memory strategy identifiers keyed by caller key. |
-| <a name="output_oauth2_credential_providers"></a> [oauth2\_credential\_providers](#output\_oauth2\_credential\_providers) | AgentCore OAuth2 credential provider ARNs keyed by caller key. |
-| <a name="output_observability_log_groups"></a> [observability\_log\_groups](#output\_observability\_log\_groups) | CloudWatch observability log group ARNs keyed by caller key. |
-| <a name="output_online_evaluations"></a> [online\_evaluations](#output\_online\_evaluations) | AgentCore online evaluation identifiers and ARNs keyed by caller key. |
-| <a name="output_policies"></a> [policies](#output\_policies) | AgentCore Cedar policy identifiers and ARNs keyed by caller key. |
-| <a name="output_policy_engines"></a> [policy\_engines](#output\_policy\_engines) | AgentCore Policy Engine identifiers and ARNs keyed by caller key. |
-| <a name="output_preview_stacks"></a> [preview\_stacks](#output\_preview\_stacks) | Isolated preview CloudFormation stack identifiers and outputs keyed by caller key. |
-| <a name="output_registries"></a> [registries](#output\_registries) | Shadow Agent Registry Preview identifiers and ARNs keyed by caller key. |
-| <a name="output_runtime_endpoints"></a> [runtime\_endpoints](#output\_runtime\_endpoints) | Runtime endpoint ARNs keyed by caller key. |
-| <a name="output_runtimes"></a> [runtimes](#output\_runtimes) | Runtime IDs, ARNs, versions, and workload identities keyed by caller key. |
-| <a name="output_workload_identities"></a> [workload\_identities](#output\_workload\_identities) | AgentCore workload identity ARNs keyed by caller key. |
+| <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. Null when create\_runtime = false. |
+| <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. Null when create\_runtime = false. |
+| <a name="output_agent_runtime_metadata_configuration"></a> [agent\_runtime\_metadata\_configuration](#output\_agent\_runtime\_metadata\_configuration) | Requested microVM metadata configuration applied to the AgentCore runtime. Null when create\_runtime = false or the compatibility update is disabled. |
+| <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. Null when create\_runtime = false. |
+| <a name="output_agent_runtime_network_mode"></a> [agent\_runtime\_network\_mode](#output\_agent\_runtime\_network\_mode) | Network mode of the runtime (PUBLIC or VPC). Null when create\_runtime = false. |
+| <a name="output_agent_runtime_version"></a> [agent\_runtime\_version](#output\_agent\_runtime\_version) | Version identifier of the deployed AgentCore runtime. Null when create\_runtime = false. |
+| <a name="output_agent_runtime_workload_identity_arn"></a> [agent\_runtime\_workload\_identity\_arn](#output\_agent\_runtime\_workload\_identity\_arn) | Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create\_runtime = false. |
+| <a name="output_code_interpreter_arn"></a> [code\_interpreter\_arn](#output\_code\_interpreter\_arn) | ARN of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#output\_code\_interpreter\_execution\_role\_arn) | ARN of the IAM execution role used by the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_id"></a> [code\_interpreter\_id](#output\_code\_interpreter\_id) | Unique identifier of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_name"></a> [code\_interpreter\_name](#output\_code\_interpreter\_name) | Resolved name of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_code_interpreter_network_mode"></a> [code\_interpreter\_network\_mode](#output\_code\_interpreter\_network\_mode) | Network mode of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
+| <a name="output_codebuild_project_arn"></a> [codebuild\_project\_arn](#output\_codebuild\_project\_arn) | ARN of the CodeBuild project. Null when create\_build\_pipeline = false. |
+| <a name="output_codebuild_project_name"></a> [codebuild\_project\_name](#output\_codebuild\_project\_name) | Name of the CodeBuild project. Null when create\_build\_pipeline = false. |
+| <a name="output_codebuild_role_arn"></a> [codebuild\_role\_arn](#output\_codebuild\_role\_arn) | ARN of the IAM role used by the CodeBuild image-build project. Null when create\_build\_pipeline = false. |
+| <a name="output_codebuild_start_build_command"></a> [codebuild\_start\_build\_command](#output\_codebuild\_start\_build\_command) | AWS CLI command to trigger a CodeBuild build manually. Copy-paste into your CI pipeline when trigger\_build\_on\_apply = false. Null when create\_build\_pipeline = false. |
+| <a name="output_container_image_uri"></a> [container\_image\_uri](#output\_container\_image\_uri) | Alias for effective\_image\_uri. Kept for backwards compatibility. |
+| <a name="output_ecr_repository_arn"></a> [ecr\_repository\_arn](#output\_ecr\_repository\_arn) | ARN of the ECR repository. Null when create\_build\_pipeline = false. |
+| <a name="output_ecr_repository_name"></a> [ecr\_repository\_name](#output\_ecr\_repository\_name) | Name of the ECR repository. Null when create\_build\_pipeline = false. |
+| <a name="output_ecr_repository_url"></a> [ecr\_repository\_url](#output\_ecr\_repository\_url) | Full ECR repository URL (without tag). Null when create\_build\_pipeline = false. |
+| <a name="output_effective_image_uri"></a> [effective\_image\_uri](#output\_effective\_image\_uri) | The container image URI used by the runtime. When create\_build\_pipeline = true this is the ECR repo URL + image\_tag; when create\_build\_pipeline = false this is the caller-supplied image\_uri. |
+| <a name="output_execution_role_arn"></a> [execution\_role\_arn](#output\_execution\_role\_arn) | ARN of the IAM role used by the AgentCore runtime. Will equal var.execution\_role\_arn when create\_execution\_role = false. |
+| <a name="output_execution_role_name"></a> [execution\_role\_name](#output\_execution\_role\_name) | Name of the module-created execution role. Empty string when create\_execution\_role = false. |
+| <a name="output_gateway_agent_target_invocation_urls"></a> [gateway\_agent\_target\_invocation\_urls](#output\_gateway\_agent\_target\_invocation\_urls) | Map of AGENT target keys to their path-routed Gateway invocation URLs. Empty when create\_gateway = false. |
+| <a name="output_gateway_arn"></a> [gateway\_arn](#output\_gateway\_arn) | ARN of the AgentCore Gateway. Null when create\_gateway = false. |
+| <a name="output_gateway_id"></a> [gateway\_id](#output\_gateway\_id) | Unique identifier of the AgentCore Gateway. Null when create\_gateway = false. |
+| <a name="output_gateway_protocol_type"></a> [gateway\_protocol\_type](#output\_gateway\_protocol\_type) | Effective Gateway aggregation protocol. MCP for aggregation gateways, null for general HTTP gateways or when create\_gateway = false. |
+| <a name="output_gateway_role_arn"></a> [gateway\_role\_arn](#output\_gateway\_role\_arn) | ARN of the IAM role used by the gateway. Null when create\_gateway = false. |
+| <a name="output_gateway_role_name"></a> [gateway\_role\_name](#output\_gateway\_role\_name) | Name of the module-created gateway IAM role. Null when create\_gateway = false. |
+| <a name="output_gateway_runtime_target_id"></a> [gateway\_runtime\_target\_id](#output\_gateway\_runtime\_target\_id) | Gateway target ID for the module-created runtime target. Null when gateway\_attach\_runtime\_target = false. |
+| <a name="output_gateway_target_endpoints"></a> [gateway\_target\_endpoints](#output\_gateway\_target\_endpoints) | Map of MCP target keys to the resolved MCP server endpoints configured on the gateway targets. Empty when create\_gateway = false. |
+| <a name="output_gateway_target_ids"></a> [gateway\_target\_ids](#output\_gateway\_target\_ids) | Map of target keys to AgentCore Gateway target IDs. Empty when create\_gateway = false. |
+| <a name="output_gateway_url"></a> [gateway\_url](#output\_gateway\_url) | URL endpoint of the AgentCore Gateway. Null when create\_gateway = false. |
+| <a name="output_gateway_workload_identity_arn"></a> [gateway\_workload\_identity\_arn](#output\_gateway\_workload\_identity\_arn) | Workload identity ARN associated with the gateway. Null when create\_gateway = false. |
+| <a name="output_memory_arn"></a> [memory\_arn](#output\_memory\_arn) | ARN of the AgentCore Memory resource. Null when create\_memory = false. |
+| <a name="output_memory_id"></a> [memory\_id](#output\_memory\_id) | Unique identifier of the AgentCore Memory resource. Null when create\_memory = false. |
+| <a name="output_memory_name"></a> [memory\_name](#output\_memory\_name) | Name of the AgentCore Memory resource. Null when create\_memory = false. |
+| <a name="output_source_bucket_arn"></a> [source\_bucket\_arn](#output\_source\_bucket\_arn) | ARN of the S3 source bucket. Null when create\_build\_pipeline = false. |
+| <a name="output_source_bucket_name"></a> [source\_bucket\_name](#output\_source\_bucket\_name) | Name of the S3 bucket holding the agent source code archive. Null when create\_build\_pipeline = false. |
 <!-- END_TF_DOCS -->
+
+---
+
+## 🧪 Examples
+
+| Example | Description |
+|---|---|
+| [examples/basic](examples/basic) | Minimal runtime — one module call with sensible defaults and a working Python agent stub. |
+| [examples/byo-image](examples/byo-image) | Bring Your Own Image — skips the build pipeline and deploys a pre-built image URI. |
+| [examples/codebuild-no-trigger](examples/codebuild-no-trigger) | CodeBuild pipeline provisioned but builds are driven by your own CI/CD, not by `apply`. |
+| [examples/gateway-only](examples/gateway-only) | Standalone general Gateway with AWS IAM inbound auth and no targets. |
+| [examples/gateway-agent-runtime-target](examples/gateway-agent-runtime-target) | General Gateway with one direct AgentCore Runtime `AGENT` target. |
+| [examples/gateway-multiple-targets](examples/gateway-multiple-targets) | Standalone MCP Gateway with multiple MCP targets, including AgentCore Runtime and explicit HTTPS endpoints. |
+| [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP runtime, creates a gateway, and attaches that runtime as a gateway target. |
+
+---
+
+## 🧰 Usage
+
+### Minimal (CodeBuild + runtime)
+
+```hcl
+provider "aws" {
+  region = "us-east-1"
+}
+
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "my-agent"
+}
+```
+
+Place your agent code (including a `Dockerfile`) in `./agent-code/` relative to where you call the module, then run `terraform apply` (or `tofu apply`). The module zips the directory, uploads it to S3, triggers a CodeBuild build, and provisions the AgentCore runtime.
+
+> ⚠️ **Build trigger prerequisites** — when `trigger_build_on_apply = true` (the default), Terraform / OpenTofu shells out to `scripts/build-image.sh` via `local-exec`. The machine running `apply` must have **AWS CLI v2** installed and a **bash-compatible shell** (Linux, macOS, or WSL on Windows). Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your own CI/CD pipeline using the `codebuild_start_build_command` output.
+
+### Bring Your Own Image
+
+Skip the build pipeline and deploy any container image you have already pushed:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                  = "my-agent"
+  create_build_pipeline = false
+  image_uri             = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:v1.2.3"
+}
+```
+
+> **Note:** When `create_build_pipeline = false`, the module does not create ECR, S3, or CodeBuild resources and deploys `image_uri` to the runtime as-is. Ensure the execution role has permission to pull from the target registry.
+
+### Decouple builds from apply
+
+Provision the build infrastructure but let your CI pipeline drive actual builds:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                   = "my-agent"
+  trigger_build_on_apply = false
+}
+```
+
+After apply, use the ready-made CLI command from the module output:
+
+```bash
+# Copy the exact command from the Terraform output:
+terraform output -raw codebuild_start_build_command | bash
+# Or construct it manually:
+aws codebuild start-build --project-name <codebuild_project_name> --region <region>
+```
+
+### Add a Memory store
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name          = "my-agent"
+  create_memory = true
+
+  memory_event_expiry_duration = 30
+}
+```
+
+### Runtime with Code Interpreter
+
+Enable a custom Code Interpreter alongside the runtime with one flag:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name                    = "analytics-agent"
+  create_code_interpreter = true
+}
+```
+
+The default `SANDBOX` network mode limits external access. The module reuses its AgentCore execution role for the Code Interpreter, grants that role session access to the generated custom ARN, and injects the generated identifier into the runtime as `BEDROCK_AGENTCORE_CODE_INTERPRETER_ID`. Agent code can read that environment variable when starting and invoking Code Interpreter sessions.
+
+Use a dedicated execution role or a different network mode when needed:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name                               = "analytics-agent"
+  create_code_interpreter            = true
+  code_interpreter_execution_role_arn = aws_iam_role.code_interpreter.arn
+  code_interpreter_network_mode       = "VPC"
+
+  code_interpreter_vpc_subnet_ids         = module.vpc.private_subnets
+  code_interpreter_vpc_security_group_ids = [aws_security_group.code_interpreter.id]
+}
+```
+
+When `create_execution_role = false`, the supplied `execution_role_arn` must allow the Code Interpreter session actions on the custom Code Interpreter ARN. The module cannot modify a caller-managed role.
+
+### Gateway only
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name = "mcp-gateway"
+
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+}
+```
+
+### General Gateway with an Agent target
+
+`AGENT` targets route directly to an AgentCore Runtime without MCP aggregation or protocol translation. Leave `gateway_protocol_type` unset; its default is `null`.
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name = "aegis-agent-gateway"
+
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+
+  gateway_targets = {
+    assistant = {
+      target_type       = "AGENT"
+      description       = "Runtime agent routed directly through the gateway."
+      agent_runtime_arn = var.agent_runtime_arn
+      qualifier         = "DEFAULT"
+    }
+  }
+}
+```
+
+The invocation URL is returned in `gateway_agent_target_invocation_urls` and follows `https://{gateway-id}.gateway.bedrock-agentcore.{region}.amazonaws.com/{target-name}/invocations`. The module configures Gateway IAM outbound authorization and grants `bedrock-agentcore:InvokeAgentRuntime` on the runtime and qualifier endpoint ARNs.
+
+### Gateway with an AgentCore Runtime MCP target
+
+Use `target_type = "MCP"` when the runtime exposes an MCP server and its capabilities should be aggregated into the Gateway MCP endpoint. The module infers `gateway_protocol_type = "MCP"` from the target.
+
+```hcl
+gateway_targets = {
+  datadog = {
+    target_type       = "MCP"
+    description       = "Read-only Datadog MCP runtime."
+    agent_runtime_arn = var.datadog_mcp_runtime_arn
+    qualifier         = "DEFAULT"
+  }
+}
+```
+
+### Runtime and Gateway in one module call
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.5"
+
+  name = "aegis-mcp-datadog"
+
+  create_runtime = true
+  create_gateway = true
+
+  server_protocol = "MCP"
+
+  gateway_authorizer_type       = "AWS_IAM"
+  gateway_attach_runtime_target = true
+  gateway_runtime_target = {
+    name        = "datadog"
+    description = "Read-only Datadog MCP runtime."
+    qualifier   = "DEFAULT"
+  }
+}
+```
+
+When `gateway_attach_runtime_target = true`, the root module adds the module-created runtime to `gateway_targets` internally. The stable output/map key is `runtime`. Its target type defaults to `AGENT` for HTTP/A2A runtimes and to `MCP` for an MCP runtime or explicitly MCP Gateway; override it with `gateway_runtime_target.target_type`.
+
+### Multiple MCP targets
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name = "shared-mcp-gateway"
+
+  create_runtime        = false
+  create_build_pipeline = false
+  create_execution_role = false
+  create_gateway        = true
+
+  gateway_authorizer_type = "AWS_IAM"
+
+  gateway_targets = {
+    runtime = {
+      target_type       = "MCP"
+      description       = "AgentCore Runtime MCP server."
+      agent_runtime_arn = var.agent_runtime_arn
+    }
+
+    external = {
+      target_type = "MCP"
+      description = "External MCP server."
+      endpoint    = "https://mcp.example.com/mcp"
+    }
+  }
+}
+```
+
+### Custom source directory and pinned image tag
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name             = "my-agent"
+  agent_source_dir = "${path.root}/src/my-agent"
+  image_tag        = "1.2.0"
+}
+```
+
+### Production configuration
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name        = "payments-agent"
+  description = "Payments processing agent — production."
+  image_tag   = var.release_tag
+
+  # Keep the runtime inside the VPC — no public endpoint
+  network_mode           = "VPC"
+  vpc_subnet_ids         = ["subnet-aaaa1111", "subnet-bbbb2222"]
+  vpc_security_group_ids = ["sg-cccc3333"]
+
+  # Tighten ECR for production
+  ecr_image_tag_mutability    = "IMMUTABLE"
+  ecr_lifecycle_keep_count    = 30
+  ecr_force_delete            = false
+  source_bucket_force_destroy = false
+
+  # Drop the broad managed policy; grant only what the agent needs
+  attach_bedrock_fullaccess_policy = false
+  allow_workload_access_token_for_user_id = false
+  additional_iam_statements = [
+    {
+      Sid    = "ClaudeAccess"
+      Effect = "Allow"
+      Action = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+      ]
+      Resource = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+    },
+    {
+      Sid      = "SecretsAccess"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = "arn:aws:secretsmanager:us-east-1:123456789012:secret:payments-agent/*"
+    },
+  ]
+
+  codebuild_compute_type = "BUILD_GENERAL1_XLARGE"
+
+  tags = {
+    Environment = "production"
+    Team        = "platform"
+    CostCenter  = "eng-0042"
+  }
+}
+```
+
+### Attach existing managed IAM policies
+
+Use `additional_iam_policy_arns` instead of generating separate attachment resources around the module:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.6"
+
+  name = "inventory-agent"
+
+  additional_iam_policy_arns = [
+    "arn:aws:iam::aws:policy/ReadOnlyAccess",
+  ]
+}
+```
+
+`ReadOnlyAccess` is intentionally broad; prefer an account-managed least-privilege policy for production workloads.
+
+### Bring your own IAM role
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                  = "my-agent"
+  create_execution_role = false
+  execution_role_arn    = aws_iam_role.my_agent_role.arn
+}
+```
+
+---
+
+## 🏢 Enterprise patterns
+
+Common configurations for organisations with tighter security postures or multi-account architectures.
+
+### Least-privilege Bedrock access (disable the wildcard `InvokeModel`)
+
+By default the module includes a baseline `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` against `*` for ease of development. Disable it and grant access only to the specific models your agent calls:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "payments-agent"
+
+  # Remove the wildcard bedrock:InvokeModel statement from the baseline policy.
+  allow_bedrock_invoke_all = false
+
+  # Drop the broad managed policy too.
+  attach_bedrock_fullaccess_policy = false
+
+  # Grant access to exactly the models the agent needs.
+  additional_iam_statements = [
+    {
+      Sid    = "ClaudeAccess"
+      Effect = "Allow"
+      Action = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+      ]
+      Resource = [
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+      ]
+    },
+  ]
+}
+```
+
+### Cross-account ECR pulls
+
+Allow workloads in other AWS accounts to pull the agent image from the module-managed ECR repository:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "shared-agent"
+
+  # Grant pull access to specific principals in other accounts.
+  # When empty (default) only the current account root is allowed.
+  ecr_pull_principals = [
+    "arn:aws:iam::111111111111:root",                       # whole account
+    "arn:aws:iam::222222222222:role/ECSTaskExecutionRole",  # specific role
+  ]
+}
+```
+
+> **Note:** Cross-account callers must also authenticate with `ecr:GetAuthorizationToken` in the registry account before pulling. Use an IAM policy in the caller account combined with the repository policy set by `ecr_pull_principals`.
+
+### Bring your own execution role
+
+Use an IAM role you manage outside of this module — common in environments where IAM is centralised:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                  = "my-agent"
+  create_execution_role = false
+  execution_role_arn    = data.aws_iam_role.platform_agent_role.arn
+}
+```
+
+### Decouple builds from Terraform state
+
+Provision infrastructure with Terraform but manage image builds entirely from your CI/CD platform:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name                   = "my-agent"
+  trigger_build_on_apply = false
+  ecr_image_tag_mutability = "IMMUTABLE"  # Enforce image immutability in CI
+}
+```
+
+Then trigger builds from CI using the module output:
+
+```bash
+# In your CI pipeline (GitHub Actions, GitLab CI, Jenkins, etc.)
+$(terraform output -raw codebuild_start_build_command)
+```
+
+### VPC mode (private endpoint)
+
+Run the runtime inside your VPC so it never receives a public endpoint. Both `vpc_subnet_ids` and `vpc_security_group_ids` are required when `network_mode = "VPC"`:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name         = "private-agent"
+  network_mode = "VPC"
+
+  vpc_subnet_ids         = data.aws_subnets.private.ids
+  vpc_security_group_ids = [aws_security_group.agent_runtime.id]
+}
+```
+
+> **Note:** The subnets must have a route to the ECR, CloudWatch Logs, and Bedrock service endpoints — either via NAT Gateway or VPC Interface Endpoints.
+
+### JWT-authenticated runtime endpoint
+
+Protect the runtime endpoint with OIDC/JWT auth so only tokens from your IdP are accepted:
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.3"
+
+  name = "my-agent"
+
+  authorizer_discovery_url    = "https://accounts.google.com/.well-known/openid-configuration"
+  authorizer_allowed_audience = ["my-agent-api"]
+  authorizer_allowed_clients  = ["client-abc123"]
+}
+```
+
+### JWT-authenticated gateway
+
+```hcl
+module "agentcore" {
+  source  = "LuisOsuna117/agentcore/aws"
+  version = "~> 0.4"
+
+  name           = "jwt-mcp-gateway"
+  create_gateway = true
+
+  gateway_authorizer_type = "CUSTOM_JWT"
+  gateway_authorizer_configuration = {
+    discovery_url    = "https://auth.example.com/.well-known/openid-configuration"
+    allowed_audience = ["my-agent-api"]
+  }
+}
+```
+
+---
+
+## 🔒 Security notes
+
+- 🔒 **`BedrockAgentCoreFullAccess` is broad** — it is enabled by default for convenience. Set `attach_bedrock_fullaccess_policy = false` in production and grant only the actions your agent requires via `additional_iam_statements`.
+- 🔒 **Disable the unverified UserId token path when it is not needed** — set `allow_workload_access_token_for_user_id = false`. The module removes the baseline Allow and adds an explicit Deny so `BedrockAgentCoreFullAccess` cannot grant it back.
+- 🛡️ **MMDSv2 is required by default** — `runtime_metadata_configuration.require_mmdsv2` defaults to `true`. The temporary compatibility update uses the AWS credentials of the machine running `apply` and writes its request to a mode-`0600` sensitive file under `.terraform/`.
+- 🔒 **Prefer least privilege** — scope `bedrock:InvokeModel` to specific model ARNs and `ecr:BatchGetImage` to specific repository ARNs rather than using `"Resource": "*"`.
+- 🧾 **Secrets belong in Secrets Manager or SSM Parameter Store** — do not pass sensitive values through `environment_variables`. Fetch them at runtime from `secretsmanager:GetSecretValue` or `ssm:GetParameter` instead.
+- ⚙️ **The build trigger runs `local-exec`** — when `trigger_build_on_apply = true`, Terraform / OpenTofu shells out to `scripts/build-image.sh` on the machine executing `apply`. This means the executor's AWS credentials and shell environment are used. Set `trigger_build_on_apply = false` to eliminate this surface area and drive builds from a controlled CI/CD pipeline.
+- 🌐 **Gateway interceptors are Lambda-backed** — each interceptor Lambda receives request or response payloads; apply appropriate resource-based policies and consider VPC isolation for sensitive workloads.
+- 🔑 **Gateway target outbound auth** — MCP runtime and direct `AGENT` targets use the gateway IAM role for outbound auth and receive an invoke policy scoped to both the base runtime ARN and qualifier-specific runtime endpoint ARN.
+
+---
+
+## 🧾 Notes and limitations
+
+### 🐳 Agent source code
+
+The module expects a `Dockerfile` at the root of the source directory. CodeBuild runs `docker build .` from that directory. Set `agent_source_dir` to point at your own code:
+
+```hcl
+agent_source_dir = "${path.root}/src/my-agent"
+```
+
+The archive is re-uploaded and CodeBuild is re-triggered automatically whenever any file in the directory changes, based on the MD5 hash of the zip.
+
+### ⚙️ Build trigger
+
+When `trigger_build_on_apply = true` (the default), the `modules/build` submodule uses a `null_resource` to call the bundled `scripts/build-image.sh` script via `local-exec`. This requires:
+
+- **AWS CLI v2** — must be available on the machine running `terraform apply` (or `tofu apply`).
+- **bash** — the build script requires a bash-compatible shell (Linux, macOS, WSL on Windows).
+
+Set `trigger_build_on_apply = false` to remove this dependency and drive builds from your CI/CD pipeline instead.
+
+### 🛡️ Runtime MMDSv2 metadata configuration
+
+Since June 30, 2026, AgentCore rejects invocations of runtimes whose `metadataConfiguration.requireMMDSV2` is missing, false, or null. This module enables it by default:
+
+```hcl
+runtime_metadata_configuration = {
+  require_mmdsv2 = true
+}
+```
+
+The AgentCore `UpdateAgentRuntime` API exposes this setting, but the current `hashicorp/aws` Agent Runtime resource does not. Until native provider support lands, the runtime submodule writes the complete update request to a sensitive JSON file under `.terraform/` and invokes:
+
+```text
+aws bedrock-agentcore-control update-agent-runtime --cli-input-json file://... --region ...
+```
+
+The executor therefore needs AWS CLI v2 with `bedrock-agentcore-control` and `--metadata-configuration` support (v2.35+ recommended), plus `bedrock-agentcore:UpdateAgentRuntime` permission. Set `runtime_metadata_configuration = null` only when another control already applies the setting; doing so disables the compatibility update. See [AWS AgentCore Runtime security best practices](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html), [MMDSv2 ValidationException troubleshooting](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html), and the [UpdateAgentRuntime API](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_UpdateAgentRuntime.html).
+
+### 🌐 VPC mode
+
+Set `network_mode = "VPC"` to prevent the runtime from receiving a public endpoint. When VPC mode is enabled, `vpc_subnet_ids` and `vpc_security_group_ids` are both required — the module validates this at plan time. Ensure the subnets have connectivity to:
+
+- `ecr.dkr.<region>.amazonaws.com` and `ecr.api.<region>.amazonaws.com` (image pull)
+- `logs.<region>.amazonaws.com` (CloudWatch Logs)
+- `bedrock-agentcore.<region>.amazonaws.com` (runtime service)
+
+Use NAT Gateway or VPC Interface Endpoints depending on your network topology.
+
+### 🔐 JWT authorizer
+
+Set `authorizer_discovery_url` to a valid OIDC discovery URL (must end with `/.well-known/openid-configuration`) to attach a JWT authorizer to the runtime endpoint. Use `authorizer_allowed_audience` and `authorizer_allowed_clients` to scope accepted tokens. When null (default), the endpoint is unauthenticated at the AgentCore layer.
+
+### 🌐 Gateway targets
+
+Use the general `gateway_targets` map and select the behavior per entry:
+
+- `target_type = "AGENT"` — requires `agent_runtime_arn`; the Gateway must have no aggregation protocol (`gateway_protocol_type = null`) and routes directly to `/{target-name}/invocations`. An optional inline or S3 `schema` can describe HTTP request and response payloads for policy features.
+- `target_type = "MCP"` — provide exactly one of `agent_runtime_arn` or an explicit HTTPS `endpoint`. The module infers `gateway_protocol_type = "MCP"` when at least one MCP target is present.
+
+For MCP targets:
+
+- `agent_runtime_arn` — the module derives `https://bedrock-agentcore.<region>.<dns-suffix>/runtimes/<runtime-id>/invocations?qualifier=<qualifier>&accountId=<account-id>`, configures gateway IAM role SigV4 outbound auth, and grants `bedrock-agentcore:InvokeAgentRuntime` on the runtime and runtime-endpoint ARNs.
+- `endpoint` — the module uses the explicit HTTPS MCP server endpoint and does not create an AgentCore Runtime invoke policy.
+
+MCP aggregation and `AGENT` HTTP targets cannot be mixed on the same Gateway; create separate gateways for those modes. `gateway_mcp_targets` remains as a deprecated compatibility alias.
+
+Set `gateway_attach_runtime_target = true` when the same root module call creates both the runtime and gateway. The self target is merged into `gateway_targets` under the reserved key `runtime`.
+
+### ⏱️ Lifecycle and protocol
+
+- `idle_runtime_session_timeout` — seconds before an idle session is reaped; reduces cost in low-traffic deployments.
+- `max_lifetime` — hard cap on instance lifetime; forces rotation on a schedule.
+- `server_protocol` — valid values are `HTTP` (default), `MCP`, and `A2A`. Must match the protocol your agent client uses.
+- `request_header_allowlist` — list of HTTP headers forwarded to the container; useful for passing correlation IDs or auth context.
+
+### 🆔 Workload identity ARN
+
+The runtime exposes a `workload_identity_arn` output (and `agent_runtime_workload_identity_arn` at the root). Use this ARN to grant callers permission to obtain short-lived AgentCore workload access tokens for the runtime.
+
+### 🧰 ARM64 requirement
+
+AgentCore supports ARM64 architecture only. The default CodeBuild image (`amazonlinux2-aarch64-standard:3.0`) and environment type (`ARM_CONTAINER`) produce compatible ARM64 images. You must use ARM64 images; x86 images are not supported.
+
+### 🔒 IAM and `BedrockAgentCoreFullAccess`
+
+The `BedrockAgentCoreFullAccess` managed policy is attached by default. It is broad and suited for development and prototyping. For production, set `attach_bedrock_fullaccess_policy = false` and supply exactly the permissions your agent needs via `additional_iam_statements` and/or `additional_iam_policy_arns`.
+
+Set `allow_workload_access_token_for_user_id = false` for JWT-only workloads. Because the default managed policy grants `bedrock-agentcore:*`, this option adds an explicit Deny for `GetWorkloadAccessTokenForUserId` in addition to removing the action from the baseline Allow.
+
+The module-created execution role receives:
+
+- ECR image pull (scoped to the module-created repository when `create_build_pipeline = true`)
+- CloudWatch Logs writes (scoped to `/aws/bedrock-agentcore/runtimes/*`)
+- X-Ray tracing
+- CloudWatch Metrics (scoped to the `bedrock-agentcore` namespace)
+- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` against `*` — narrow this via `additional_iam_statements` if needed
+- AgentCore workload access tokens
+- a separate inline policy for Code Interpreter session actions, scoped to the created custom ARN when both Runtime and Code Interpreter are enabled
+
+### 🧮 Code Interpreter
+
+`create_code_interpreter = true` provisions a custom `aws_bedrockagentcore_code_interpreter`. Its generated identifier is available through the `code_interpreter_id` output and the runtime environment variable `BEDROCK_AGENTCORE_CODE_INTERPRETER_ID`.
+
+The default `code_interpreter_network_mode = "SANDBOX"` provides limited AWS service access. Use `PUBLIC` only when executed code needs internet access. For `VPC`, both `code_interpreter_vpc_subnet_ids` and `code_interpreter_vpc_security_group_ids` are required. The execution role controls which AWS resources code running inside the interpreter can access; use `code_interpreter_execution_role_arn` to separate those permissions from the runtime role.
+
+### 📦 Provider version
+
+The AgentCore resource types were introduced in hashicorp/aws **v6.x**. This module requires **v6.48 or newer**, where `aws_bedrockagentcore_gateway.protocol_type` became optional and direct AgentCore Runtime HTTP targets became available. Gateway targets remain encapsulated in `aws_cloudformation_stack` resources so MCP SigV4 credentials and direct `AGENT` target configuration use the complete AWS shape. As of hashicorp/aws v6.54, `aws_bedrockagentcore_agent_runtime` still does not expose `metadata_configuration`; the module uses the documented `UpdateAgentRuntime` compatibility bridge described above. Newer inference and generic HTTP passthrough target shapes likewise require upstream IaC schema support before this module can manage them safely.
+
+### 🧩 Using submodules independently
+
+Each module under `modules/` is a self-contained Terraform module and can be called directly without going through the root wrapper:
+
+```hcl
+module "my_memory" {
+  source = "LuisOsuna117/agentcore/aws//modules/memory"
+
+  name                  = "my-agent-memory"
+  event_expiry_duration = 60
+}
+```
+
+The Code Interpreter submodule is also independently consumable at `LuisOsuna117/agentcore/aws//modules/code-interpreter`.
+
+### No official AWS affiliation
+
+This is a community module authored and maintained by [LuisOsuna117](https://github.com/LuisOsuna117). It is not affiliated with or endorsed by AWS, HashiCorp, or the OpenTofu project.
+
+---
+
+## 📄 License
+
+[Apache 2.0](LICENSE)
