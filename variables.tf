@@ -743,6 +743,37 @@ variable "gateway_policy_engine_configuration" {
   }
 }
 
+variable "gateway_resource_policy_configuration" {
+  description = "Optional IAM role allowlist for a resource policy attached to the module-created Gateway. An empty role_arns set creates an explicit deny-all policy."
+  type = object({
+    role_arns = set(string)
+  })
+  default = null
+
+  validation {
+    condition = var.gateway_resource_policy_configuration == null ? true : alltrue([
+      for arn in var.gateway_resource_policy_configuration.role_arns : can(regex("^arn:aws[^:]*:iam::[0-9]{12}:role/.+", arn))
+    ])
+    error_message = "gateway_resource_policy_configuration.role_arns must contain valid IAM role ARNs."
+  }
+}
+
+variable "runtime_resource_policy_configuration" {
+  description = "Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow_gateway_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy."
+  type = object({
+    role_arns          = optional(set(string), [])
+    allow_gateway_role = optional(bool, false)
+  })
+  default = null
+
+  validation {
+    condition = var.runtime_resource_policy_configuration == null ? true : alltrue([
+      for arn in var.runtime_resource_policy_configuration.role_arns : can(regex("^arn:aws[^:]*:iam::[0-9]{12}:role/.+", arn))
+    ])
+    error_message = "runtime_resource_policy_configuration.role_arns must contain valid IAM role ARNs."
+  }
+}
+
 variable "gateway_interceptor_configurations" {
   description = "List of interceptor configurations (max 2). Each: { interception_points, lambda_arn, pass_request_headers }."
   type = list(object({

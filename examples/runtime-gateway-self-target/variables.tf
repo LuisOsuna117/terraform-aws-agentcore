@@ -14,3 +14,9 @@ variable "image_uri" {
   description = "Full ARM64 container image URI for an MCP-capable AgentCore runtime."
   type        = string
 }
+
+variable "gateway_caller_role_arns" {
+  description = "IAM role ARNs allowed to invoke the Gateway. The default empty set keeps the Gateway closed."
+  type        = set(string)
+  default     = []
+}

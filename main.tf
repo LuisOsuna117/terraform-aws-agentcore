@@ -105,6 +105,81 @@ locals {
   )
 
   gateway_target_names = [for key, target in var.gateway_targets : coalesce(try(target.name, null), key)]
+
+  gateway_resource_policy_role_arns = var.gateway_resource_policy_configuration == null ? [] : sort(tolist(var.gateway_resource_policy_configuration.role_arns))
+  runtime_resource_policy_role_arns = var.runtime_resource_policy_configuration == null ? [] : sort(distinct(compact(concat(
+    tolist(var.runtime_resource_policy_configuration.role_arns),
+    var.runtime_resource_policy_configuration.allow_gateway_role ? [try(module.gateway[0].role_arn, null)] : [],
+  ))))
+
+  gateway_resource_policy = var.gateway_resource_policy_configuration == null ? null : jsonencode({
+    Version = "2012-10-17"
+    Statement = concat(
+      length(local.gateway_resource_policy_role_arns) == 0 ? [] : [{
+        Sid       = "AllowConfiguredRoles"
+        Effect    = "Allow"
+        Principal = { AWS = local.gateway_resource_policy_role_arns }
+        Action    = "bedrock-agentcore:InvokeGateway"
+        Resource  = try(module.gateway[0].gateway_arn, null)
+      }],
+      [merge(
+        {
+          Sid       = length(local.gateway_resource_policy_role_arns) == 0 ? "DenyAllCallers" : "DenyUnlistedCallers"
+          Effect    = "Deny"
+          Principal = "*"
+          Action    = "bedrock-agentcore:InvokeGateway"
+          Resource  = try(module.gateway[0].gateway_arn, null)
+        },
+        length(local.gateway_resource_policy_role_arns) == 0 ? {} : {
+          Condition = {
+            ArnNotEquals = { "aws:PrincipalArn" = local.gateway_resource_policy_role_arns }
+          }
+        },
+      )],
+    )
+  })
+
+  runtime_resource_policy = var.runtime_resource_policy_configuration == null ? null : jsonencode({
+    Version = "2012-10-17"
+    Statement = concat(
+      length(local.runtime_resource_policy_role_arns) == 0 ? [] : [{
+        Sid       = "AllowConfiguredRoles"
+        Effect    = "Allow"
+        Principal = { AWS = local.runtime_resource_policy_role_arns }
+        Action    = "bedrock-agentcore:InvokeAgentRuntime"
+        Resource  = try(module.runtime[0].agent_runtime_arn, null)
+      }],
+      [merge(
+        {
+          Sid       = length(local.runtime_resource_policy_role_arns) == 0 ? "DenyAllCallers" : "DenyUnlistedCallers"
+          Effect    = "Deny"
+          Principal = "*"
+          Action    = "bedrock-agentcore:InvokeAgentRuntime"
+          Resource  = try(module.runtime[0].agent_runtime_arn, null)
+        },
+        length(local.runtime_resource_policy_role_arns) == 0 ? {} : {
+          Condition = {
+            ArnNotEquals = { "aws:PrincipalArn" = local.runtime_resource_policy_role_arns }
+          }
+        },
+      )],
+    )
+  })
+
+  root_resource_policies = merge(
+    local.gateway_resource_policy == null ? {} : {
+      gateway = {
+        resource_arn = try(module.gateway[0].gateway_arn, null)
+        policy       = local.gateway_resource_policy
+      }
+    },
+    local.runtime_resource_policy == null ? {} : {
+      runtime = {
+        resource_arn = try(module.runtime[0].agent_runtime_arn, null)
+        policy       = local.runtime_resource_policy
+      }
+    },
+  )
 }
 
 # ==============================================================================
@@ -170,6 +245,21 @@ resource "terraform_data" "validations" {
     precondition {
       condition     = !var.gateway_attach_runtime_target || !contains(local.gateway_target_names, local.gateway_runtime_target_name)
       error_message = "gateway_runtime_target.name must not collide with any resolved gateway target name."
+    }
+
+    precondition {
+      condition     = var.gateway_resource_policy_configuration == null || (var.create_gateway && var.gateway_authorizer_type == "AWS_IAM")
+      error_message = "gateway_resource_policy_configuration requires create_gateway = true and gateway_authorizer_type = \"AWS_IAM\"."
+    }
+
+    precondition {
+      condition     = var.runtime_resource_policy_configuration == null || (var.create_runtime && var.runtime_authorizer_configuration == null)
+      error_message = "runtime_resource_policy_configuration requires an IAM-authorized module-created Runtime."
+    }
+
+    precondition {
+      condition     = var.runtime_resource_policy_configuration == null ? true : (!var.runtime_resource_policy_configuration.allow_gateway_role || var.create_gateway)
+      error_message = "runtime_resource_policy_configuration.allow_gateway_role requires create_gateway = true."
     }
 
   }
@@ -345,6 +435,19 @@ module "gateway" {
   region                      = var.gateway_region
   timeouts                    = var.gateway_timeouts
   tags                        = local.common_tags
+}
+
+# ==============================================================================
+# Resource policies for resources created by this root module call
+# ==============================================================================
+
+module "resource_policy" {
+  count  = length(local.root_resource_policies) > 0 ? 1 : 0
+  source = "./modules/policy"
+
+  name                 = var.name
+  create_policy_engine = false
+  resource_policies    = local.root_resource_policies
 }
 
 # ==============================================================================

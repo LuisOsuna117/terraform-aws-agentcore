@@ -34,6 +34,14 @@ module "agentcore" {
     qualifier   = "DEFAULT"
   }
 
+  gateway_resource_policy_configuration = {
+    role_arns = var.gateway_caller_role_arns
+  }
+
+  runtime_resource_policy_configuration = {
+    allow_gateway_role = true
+  }
+
   tags = {
     Environment = "example"
     Workflow    = "runtime-gateway-self-target"

@@ -50,6 +50,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — use the native `target_configuration` shape for direct Runtime HTTP routing or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets.
+- 🛡️ **Same-call resource policies** — opt in to IAM role allowlists for the module-created Gateway and Runtime without creating a Policy Engine or managing a second Terraform state.
 - 🔑 **Execution role choice** — explicitly create a role or bring one you manage.
 - 🔒 **Extensible IAM** — append inline statements with `additional_iam_statements` or attach existing managed policies with `additional_iam_policy_arns`.
 - 📦 **Content-addressed source uploads** — S3 object keys include the archive MD5, so CodeBuild is only re-triggered when agent code actually changes.
@@ -58,7 +59,10 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 
 ### Advanced services stay opt-in
 
-AgentCore services remain opt-in. The root module covers the common Runtime, build, Memory, Code Interpreter, and Gateway composition, while focused submodules expose newer resources without enabling them by default.
+AgentCore services remain opt-in. The root module covers the common Runtime,
+build, Memory, Code Interpreter, Gateway, and same-call resource-policy
+composition, while focused submodules expose newer resources without enabling
+them by default.
 
 | Submodule | Capability | Minimums |
 |---|---|---|
@@ -127,6 +131,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_iam_role` (gateway) | `create_gateway && gateway_create_role` | Execution role for the gateway resource. |
 | `aws_bedrockagentcore_gateway_target` | `create_gateway && length(gateway_targets) > 0` | Creates direct HTTP or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets. |
 | `aws_iam_role_policy` (gateway invoke) | `create_gateway && any HTTP Runtime target uses gateway_iam_role` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on the referenced Runtime and endpoint ARNs. Explicit `gateway_runtime_invoke_arns` are also included. |
+| `aws_bedrockagentcore_resource_policy` | A root resource-policy configuration is non-null | Attaches fail-closed IAM role allowlists to the Runtime or Gateway created by the same module call. |
 
 ## 🚫 What this module does NOT create
 
@@ -162,6 +167,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="module_code_interpreter"></a> [code\_interpreter](#module\_code\_interpreter) | ./modules/code-interpreter | n/a |
 | <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
 | <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
+| <a name="module_resource_policy"></a> [resource\_policy](#module\_resource\_policy) | ./modules/policy | n/a |
 | <a name="module_runtime"></a> [runtime](#module\_runtime) | ./modules/runtime | n/a |
 
 ## Resources
@@ -229,6 +235,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_protocol_configuration"></a> [gateway\_protocol\_configuration](#input\_gateway\_protocol\_configuration) | Optional MCP protocol instructions, versions, session timeout, and response streaming configuration. | <pre>object({<br/>    instructions               = optional(string)<br/>    search_type                = optional(string)<br/>    supported_versions         = optional(set(string), [])<br/>    session_timeout_in_seconds = optional(number)<br/>    enable_response_streaming  = optional(bool)<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_protocol_type"></a> [gateway\_protocol\_type](#input\_gateway\_protocol\_type) | Optional gateway aggregation protocol. Set to "MCP" for MCP aggregation, or null for general HTTP targets such as AgentCore Runtime agents. MCP is inferred when an MCP target is configured. | `string` | `null` | no |
 | <a name="input_gateway_region"></a> [gateway\_region](#input\_gateway\_region) | AWS Region in which to manage the Gateway. Defaults to the provider Region. | `string` | `null` | no |
+| <a name="input_gateway_resource_policy_configuration"></a> [gateway\_resource\_policy\_configuration](#input\_gateway\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Gateway. An empty role\_arns set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns = set(string)<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_role_arn"></a> [gateway\_role\_arn](#input\_gateway\_role\_arn) | ARN of an existing IAM role for the gateway. Required when gateway\_create\_role = false. | `string` | `null` | no |
 | <a name="input_gateway_role_policy_arns"></a> [gateway\_role\_policy\_arns](#input\_gateway\_role\_policy\_arns) | Managed policy ARNs to attach to the module-created Gateway role. | `set(string)` | `[]` | no |
 | <a name="input_gateway_role_policy_statements"></a> [gateway\_role\_policy\_statements](#input\_gateway\_role\_policy\_statements) | Additional least-privilege IAM statements for the module-created Gateway role. | <pre>list(object({<br/>    sid       = optional(string)<br/>    effect    = optional(string, "Allow")<br/>    actions   = set(string)<br/>    resources = set(string)<br/>    condition = optional(any)<br/>  }))</pre> | `[]` | no |
@@ -257,6 +264,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_runtime_filesystems"></a> [runtime\_filesystems](#input\_runtime\_filesystems) | Opt-in Runtime session, S3 Files, or EFS filesystem mounts. | <pre>list(object({<br/>    session_storage = optional(object({<br/>      mount_path = string<br/>    }))<br/>    s3_files_access_point = optional(object({<br/>      access_point_arn = string<br/>      mount_path       = string<br/>    }))<br/>    efs_access_point = optional(object({<br/>      access_point_arn = string<br/>      mount_path       = string<br/>    }))<br/>  }))</pre> | `[]` | no |
 | <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API. | `string` | `null` | no |
 | <a name="input_runtime_region"></a> [runtime\_region](#input\_runtime\_region) | AWS Region in which to manage the Runtime. Defaults to the provider Region. | `string` | `null` | no |
+| <a name="input_runtime_resource_policy_configuration"></a> [runtime\_resource\_policy\_configuration](#input\_runtime\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow\_gateway\_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns          = optional(set(string), [])<br/>    allow_gateway_role = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_runtime_timeouts"></a> [runtime\_timeouts](#input\_runtime\_timeouts) | Optional create, update, and delete timeouts for the Runtime. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
@@ -303,6 +311,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_memory_arn"></a> [memory\_arn](#output\_memory\_arn) | ARN of the AgentCore Memory resource. Null when create\_memory = false. |
 | <a name="output_memory_id"></a> [memory\_id](#output\_memory\_id) | Unique identifier of the AgentCore Memory resource. Null when create\_memory = false. |
 | <a name="output_memory_name"></a> [memory\_name](#output\_memory\_name) | Name of the AgentCore Memory resource. Null when create\_memory = false. |
+| <a name="output_resource_policies"></a> [resource\_policies](#output\_resource\_policies) | Resource policies attached to the Runtime and Gateway created by this module call. |
 | <a name="output_source_bucket_arn"></a> [source\_bucket\_arn](#output\_source\_bucket\_arn) | ARN of the S3 source bucket. Null when create\_build\_pipeline = false. |
 | <a name="output_source_bucket_name"></a> [source\_bucket\_name](#output\_source\_bucket\_name) | Name of the S3 bucket holding the agent source code archive. Null when create\_build\_pipeline = false. |
 <!-- END_TF_DOCS -->
@@ -319,7 +328,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | [examples/gateway-only](examples/gateway-only) | Standalone general Gateway with AWS IAM inbound auth and no targets. |
 | [examples/gateway-runtime-target](examples/gateway-runtime-target) | General Gateway with one direct HTTP Runtime target. |
 | [examples/gateway-multiple-targets](examples/gateway-multiple-targets) | Standalone MCP Gateway with multiple MCP targets, including AgentCore Runtime and explicit HTTPS endpoints. |
-| [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP runtime, creates a gateway, and attaches that runtime as a gateway target. |
+| [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP Runtime, Gateway, self target, and fail-closed resource policies. |
 | [examples/identity](examples/identity) | Workload identity and write-only API-key/OAuth2 credential providers. |
 | [examples/policy](examples/policy) | Policy Engine with caller-owned Cedar. |
 | [examples/resource-policy](examples/resource-policy) | Resource policy for an existing AgentCore resource without a Policy Engine. |
@@ -566,10 +575,24 @@ module "agentcore" {
     description = "Read-only Datadog MCP runtime."
     qualifier   = "DEFAULT"
   }
+
+  gateway_resource_policy_configuration = {
+    role_arns = var.gateway_caller_role_arns
+  }
+
+  runtime_resource_policy_configuration = {
+    allow_gateway_role = true
+  }
 }
 ```
 
-When `gateway_attach_runtime_target = true`, the root module adds its Runtime to `gateway_targets` under the stable key `runtime`. `server_protocol = "MCP"` produces an MCP Server target; HTTP and A2A runtimes use direct HTTP routing.
+When `gateway_attach_runtime_target = true`, the root module adds its Runtime to
+`gateway_targets` under the stable key `runtime`. `server_protocol = "MCP"`
+produces an MCP Server target; HTTP and A2A runtimes use direct HTTP routing.
+The two resource-policy configurations remain opt-in. The module injects the
+exact generated resource ARN, explicitly denies unlisted callers, and can use
+its own Gateway role as the Runtime principal. This follows the
+[AgentCore resource-policy requirements](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html).
 
 ### Multiple MCP targets
 
