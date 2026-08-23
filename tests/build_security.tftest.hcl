@@ -33,11 +33,12 @@ run "root_features_are_opt_in" {
     condition = alltrue([
       length(module.build) == 0,
       length(module.runtime) == 0,
+      length(module.resource_policy) == 0,
       length(aws_iam_role.agent_execution) == 0,
       length(aws_iam_role_policy.agent_execution) == 0,
       length(aws_iam_role_policy_attachment.agent_execution_managed) == 0,
     ])
-    error_message = "Supplying only name must not create build, Runtime, or execution-role resources."
+    error_message = "Supplying only name must not create build, Runtime, resource-policy, or execution-role resources."
   }
 }
 

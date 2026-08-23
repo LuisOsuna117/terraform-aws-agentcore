@@ -213,3 +213,12 @@ output "gateway_role_name" {
   description = "Name of the module-created gateway IAM role. Null when create_gateway = false."
   value       = var.create_gateway ? module.gateway[0].role_name : null
 }
+
+# ==============================================================================
+# Resource policies
+# ==============================================================================
+
+output "resource_policies" {
+  description = "Resource policies attached to the Runtime and Gateway created by this module call."
+  value       = length(module.resource_policy) == 0 ? {} : module.resource_policy[0].resource_policies
+}
