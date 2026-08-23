@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.0.1...v1.1.0) (2026-08-23)
+
+### 🚀 Features
+
+* **root:** manage generated resource policies ([518dc89](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/518dc8987d9956adc892d702be7b6e6238af210e))
+
+### 🐛 Bug Fixes
+
+* **root:** support Terraform 1.11 evaluation ([ed6e9cd](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/ed6e9cd7ccbb16e9bbad6b9256af3cbae7ec5353))
+
 ## [1.0.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.0.0...v1.0.1) (2026-08-23)
 
 ### 🐛 Bug Fixes
