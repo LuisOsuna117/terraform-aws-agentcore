@@ -370,9 +370,9 @@ resource "aws_bedrockagentcore_gateway_target" "this" {
   dynamic "metadata_configuration" {
     for_each = var.metadata_configuration == null ? [] : [var.metadata_configuration]
     content {
-      allowed_query_parameters = metadata_configuration.value.allowed_query_parameters
-      allowed_request_headers  = metadata_configuration.value.allowed_request_headers
-      allowed_response_headers = metadata_configuration.value.allowed_response_headers
+      allowed_query_parameters = length(metadata_configuration.value.allowed_query_parameters) == 0 ? null : metadata_configuration.value.allowed_query_parameters
+      allowed_request_headers  = length(metadata_configuration.value.allowed_request_headers) == 0 ? null : metadata_configuration.value.allowed_request_headers
+      allowed_response_headers = length(metadata_configuration.value.allowed_response_headers) == 0 ? null : metadata_configuration.value.allowed_response_headers
     }
   }
 
