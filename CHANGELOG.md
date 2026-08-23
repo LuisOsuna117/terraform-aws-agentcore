@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.0.0...v1.0.1) (2026-08-23)
+
+### 🐛 Bug Fixes
+
+* **example:** complete resource policy layout ([7af2fa5](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/7af2fa53c0fe08da0cc5d8272f1bad179c5c6de7))
+* **policy:** support standalone resource policies ([52747ee](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/52747eebd46f3bd086948ff61f4100ed1f1f2a57))
+
 ## [1.0.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v0.8.0...v1.0.0) (2026-08-20)
 
 ### ⚠ BREAKING CHANGES
