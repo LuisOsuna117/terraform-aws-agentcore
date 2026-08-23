@@ -63,7 +63,7 @@ AgentCore services remain opt-in. The root module covers the common Runtime, bui
 | Submodule | Capability | Minimums |
 |---|---|---|
 | [`modules/identity`](modules/identity) | Workload identities, write-only API-key/OAuth2 providers, token-vault KMS configuration | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
-| [`modules/policy`](modules/policy) | Policy Engine, caller-owned Cedar policies, resource policies | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/policy`](modules/policy) | Optional Policy Engine, caller-owned Cedar, and standalone resource policies | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/managed-harness`](modules/managed-harness) | Managed Harness models, tools, budgets, storage, truncation, JWT and Memory settings | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
@@ -89,7 +89,7 @@ AgentCore services remain opt-in. The root module covers the common Runtime, bui
     ├── memory/           # aws_bedrockagentcore_memory (create_memory = true)
     ├── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
     ├── identity/         # Workload Identity + credential providers + token vault
-    ├── policy/           # Policy Engine + Cedar/resource policies
+    ├── policy/           # Policy Engine, Cedar, or standalone resource policies
     ├── browser/          # Browser + Browser Profiles
     ├── managed-harness/  # Managed Harness
     ├── evaluation/       # Evaluators + online evaluation configs
@@ -322,6 +322,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | [examples/runtime-gateway-self-target](examples/runtime-gateway-self-target) | Single module call that creates an MCP runtime, creates a gateway, and attaches that runtime as a gateway target. |
 | [examples/identity](examples/identity) | Workload identity and write-only API-key/OAuth2 credential providers. |
 | [examples/policy](examples/policy) | Policy Engine with caller-owned Cedar. |
+| [examples/resource-policy](examples/resource-policy) | Resource policy for an existing AgentCore resource without a Policy Engine. |
 | [examples/browser](examples/browser) | Browser and Browser Profile with optional advanced controls. |
 | [examples/managed-harness](examples/managed-harness) | Managed Harness with explicit budgets and no tools by default. |
 | [examples/evaluation](examples/evaluation) | Code-based Evaluator and sampled online evaluation. |

@@ -63,6 +63,7 @@ jobs:
           - examples/runtime-gateway-self-target
           - examples/identity
           - examples/policy
+          - examples/resource-policy
           - examples/browser
           - examples/managed-harness
           - examples/evaluation
@@ -153,6 +154,7 @@ jobs:
           - examples/runtime-gateway-self-target
           - examples/identity
           - examples/policy
+          - examples/resource-policy
           - examples/browser
           - examples/managed-harness
           - examples/evaluation
