@@ -14,11 +14,6 @@ output "policy_arns" {
 }
 
 output "resource_policies" {
-  description = "Created AgentCore resource policies keyed by caller-defined name."
-  value = {
-    for key, resource_policy in aws_bedrockagentcore_resource_policy.this : key => {
-      resource_arn = resource_policy.resource_arn
-      policy       = resource_policy.policy
-    }
-  }
+  description = "Configured AgentCore resource policies keyed by caller-defined name."
+  value       = var.resource_policies
 }

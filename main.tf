@@ -258,7 +258,7 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
-      condition     = var.runtime_resource_policy_configuration == null || !var.runtime_resource_policy_configuration.allow_gateway_role || var.create_gateway
+      condition     = var.runtime_resource_policy_configuration == null ? true : (!var.runtime_resource_policy_configuration.allow_gateway_role || var.create_gateway)
       error_message = "runtime_resource_policy_configuration.allow_gateway_role requires create_gateway = true."
     }
 

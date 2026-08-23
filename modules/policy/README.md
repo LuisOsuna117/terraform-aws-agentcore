@@ -58,5 +58,5 @@ No modules.
 | <a name="output_policy_arns"></a> [policy\_arns](#output\_policy\_arns) | Policy ARNs keyed by caller-defined name. |
 | <a name="output_policy_engine_arn"></a> [policy\_engine\_arn](#output\_policy\_engine\_arn) | Created policy engine ARN, or null when an existing engine is used. |
 | <a name="output_policy_engine_id"></a> [policy\_engine\_id](#output\_policy\_engine\_id) | Created or caller-supplied policy engine ID. |
-| <a name="output_resource_policies"></a> [resource\_policies](#output\_resource\_policies) | Created AgentCore resource policies keyed by caller-defined name. |
+| <a name="output_resource_policies"></a> [resource\_policies](#output\_resource\_policies) | Configured AgentCore resource policies keyed by caller-defined name. |
 <!-- END_TF_DOCS -->
