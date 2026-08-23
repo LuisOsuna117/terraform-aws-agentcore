@@ -26,7 +26,7 @@ mock_provider "null" {}
 mock_provider "time" {}
 
 run "root_instance_owns_gateway_and_runtime_resource_policies" {
-  command = plan
+  command = apply
 
   variables {
     name                          = "provider"
@@ -83,7 +83,7 @@ run "root_instance_owns_gateway_and_runtime_resource_policies" {
 }
 
 run "empty_gateway_role_list_is_fail_closed" {
-  command = plan
+  command = apply
 
   variables {
     name           = "closed-gateway"
