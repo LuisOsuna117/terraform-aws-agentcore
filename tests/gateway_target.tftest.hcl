@@ -38,6 +38,21 @@ run "http_runtime_target_uses_general_configuration" {
     condition     = length(aws_bedrockagentcore_gateway_target.this.credential_provider_configuration[0].jwt_passthrough) == 1
     error_message = "JWT passthrough must be represented by the general credential configuration."
   }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway_target.this.metadata_configuration[0].allowed_request_headers == toset(["x-correlation-id"])
+    error_message = "Configured request headers must be preserved."
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway_target.this.metadata_configuration[0].allowed_query_parameters == null
+    error_message = "Omitted query parameters must not be sent to AgentCore as an empty set."
+  }
+
+  assert {
+    condition     = aws_bedrockagentcore_gateway_target.this.metadata_configuration[0].allowed_response_headers == null
+    error_message = "Omitted response headers must not be sent to AgentCore as an empty set."
+  }
 }
 
 run "mcp_server_target_supports_schema_and_private_connectivity" {
