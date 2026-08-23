@@ -4,13 +4,13 @@ variable "name" {
 }
 
 variable "create_policy_engine" {
-  description = "Whether to create a policy engine. Set false and provide policy_engine_id to use an existing engine."
+  description = "Whether to create a policy engine. Set false for resource-policy-only use or to attach policies to policy_engine_id."
   type        = bool
   default     = true
 }
 
 variable "policy_engine_id" {
-  description = "Existing policy engine ID used when create_policy_engine is false."
+  description = "Existing policy engine ID. Required when policies are provided and create_policy_engine is false."
   type        = string
   default     = null
 }

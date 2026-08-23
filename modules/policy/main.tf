@@ -12,8 +12,8 @@ locals {
 resource "terraform_data" "validations" {
   lifecycle {
     precondition {
-      condition     = var.create_policy_engine || var.policy_engine_id != null
-      error_message = "policy_engine_id is required when create_policy_engine is false."
+      condition     = length(var.policies) == 0 || var.create_policy_engine || var.policy_engine_id != null
+      error_message = "policy_engine_id is required when policies are provided and create_policy_engine is false."
     }
   }
 }
