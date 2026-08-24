@@ -26,7 +26,7 @@ mock_provider "null" {}
 mock_provider "time" {}
 
 run "jwt_runtime_trusts_only_configured_and_gateway_workloads" {
-  command = plan
+  command = apply
 
   variables {
     name                                    = "operator"
