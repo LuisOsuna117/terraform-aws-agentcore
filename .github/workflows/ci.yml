@@ -71,6 +71,7 @@ jobs:
           - examples/memory-strategy
           - examples/gateway-target
           - examples/gateway-rule
+          - examples/gateway-connector-target
 
     steps:
       - uses: actions/checkout@v7
@@ -105,6 +106,9 @@ jobs:
 
       - name: Run module tests
         run: tofu test
+
+      - name: Check connector lifecycle handler syntax
+        run: python -m py_compile modules/gateway-connector-target/handler.py
 
   terraform-compat:
     name: Terraform 1.11 compatibility
@@ -162,6 +166,7 @@ jobs:
           - examples/memory-strategy
           - examples/gateway-target
           - examples/gateway-rule
+          - examples/gateway-connector-target
 
     steps:
       - uses: actions/checkout@v7
@@ -241,7 +246,7 @@ jobs:
       - name: Check terraform-docs drift
         uses: terraform-docs/gh-actions@v1
         with:
-          working-dir: .,modules/browser,modules/build,modules/code-interpreter,modules/evaluation,modules/gateway,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory,modules/memory-strategy,modules/policy,modules/temporal-policy,modules/runtime,modules/runtime-endpoint
+          working-dir: .,modules/browser,modules/build,modules/code-interpreter,modules/evaluation,modules/gateway,modules/gateway-connector-target,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory,modules/memory-strategy,modules/policy,modules/temporal-policy,modules/runtime,modules/runtime-endpoint
           output-file: README.md
           output-method: inject
           git-push: "false"

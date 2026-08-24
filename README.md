@@ -75,6 +75,7 @@ them by default.
 | [`modules/runtime-endpoint`](modules/runtime-endpoint) | Named Runtime Endpoint | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/memory-strategy`](modules/memory-strategy) | Built-in or custom Memory Strategy | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/gateway-target`](modules/gateway-target) | Native general Gateway Target with all provider target, credential, metadata, and private-connectivity variants | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/gateway-connector-target`](modules/gateway-connector-target) | Version-pinned built-in Connector target through an isolated CloudFormation lifecycle provider | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/gateway-rule`](modules/gateway-rule) | Static/weighted target routes and Configuration Bundle overrides | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 
 ---
@@ -101,8 +102,9 @@ them by default.
     ├── evaluation/       # Evaluators + online evaluation configs
     ├── runtime-endpoint/ # Runtime Endpoint
     ├── memory-strategy/  # Memory Strategy
-    ├── gateway-target/   # Native Gateway Target
-    └── gateway-rule/     # Gateway Rule
+    ├── gateway-target/           # Native Gateway Target
+    ├── gateway-connector-target/ # Version-pinned built-in Connector Target
+    └── gateway-rule/             # Gateway Rule
 ```
 
 Each submodule under `modules/` can also be called independently if you only need a subset of resources.
