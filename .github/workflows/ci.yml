@@ -241,7 +241,7 @@ jobs:
       - name: Check terraform-docs drift
         uses: terraform-docs/gh-actions@v1
         with:
-          working-dir: .,modules/browser,modules/build,modules/code-interpreter,modules/evaluation,modules/gateway,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory,modules/memory-strategy,modules/policy,modules/runtime,modules/runtime-endpoint
+          working-dir: .,modules/browser,modules/build,modules/code-interpreter,modules/evaluation,modules/gateway,modules/gateway-rule,modules/gateway-target,modules/identity,modules/managed-harness,modules/memory,modules/memory-strategy,modules/policy,modules/temporal-policy,modules/runtime,modules/runtime-endpoint
           output-file: README.md
           output-method: inject
           git-push: "false"

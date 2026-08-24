@@ -68,6 +68,7 @@ them by default.
 |---|---|---|
 | [`modules/identity`](modules/identity) | Workload identities, write-only API-key/OAuth2 providers, token-vault KMS configuration | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/policy`](modules/policy) | Optional Policy Engine, caller-owned Cedar, and standalone resource policies | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/temporal-policy`](modules/temporal-policy) | Dogwood temporal policies for an existing Policy Engine | Terraform/OpenTofu 1.11, AWSCC Provider 1.96 |
 | [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/managed-harness`](modules/managed-harness) | Managed Harness models, tools, budgets, storage, truncation, JWT and Memory settings | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
@@ -94,6 +95,7 @@ them by default.
     ├── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
     ├── identity/         # Workload Identity + credential providers + token vault
     ├── policy/           # Policy Engine, Cedar, or standalone resource policies
+    ├── temporal-policy/  # Dogwood temporal policies
     ├── browser/          # Browser + Browser Profiles
     ├── managed-harness/  # Managed Harness
     ├── evaluation/       # Evaluators + online evaluation configs
@@ -166,6 +168,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="module_build"></a> [build](#module\_build) | ./modules/build | n/a |
 | <a name="module_code_interpreter"></a> [code\_interpreter](#module\_code\_interpreter) | ./modules/code-interpreter | n/a |
 | <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
+| <a name="module_gateway_runtime_target"></a> [gateway\_runtime\_target](#module\_gateway\_runtime\_target) | ./modules/gateway-target | n/a |
 | <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
 | <a name="module_resource_policy"></a> [resource\_policy](#module\_resource\_policy) | ./modules/policy | n/a |
 | <a name="module_runtime"></a> [runtime](#module\_runtime) | ./modules/runtime | n/a |
@@ -177,6 +180,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.code_interpreter_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.gateway_runtime_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.agent_execution_additional](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.agent_execution_managed](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [terraform_data.validations](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
@@ -266,6 +270,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_runtime_region"></a> [runtime\_region](#input\_runtime\_region) | AWS Region in which to manage the Runtime. Defaults to the provider Region. | `string` | `null` | no |
 | <a name="input_runtime_resource_policy_configuration"></a> [runtime\_resource\_policy\_configuration](#input\_runtime\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow\_gateway\_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns          = optional(set(string), [])<br/>    allow_gateway_role = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_runtime_timeouts"></a> [runtime\_timeouts](#input\_runtime\_timeouts) | Optional create, update, and delete timeouts for the Runtime. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
+| <a name="input_runtime_trust_gateway_workload_identity"></a> [runtime\_trust\_gateway\_workload\_identity](#input\_runtime\_trust\_gateway\_workload\_identity) | When true, adds the workload identity of the Gateway created by this module call to the Runtime CUSTOM\_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation. | `bool` | `false` | no |
 | <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
@@ -277,6 +282,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Description |
 |------|-------------|
+| <a name="output_agent_runtime_allowed_workload_identities"></a> [agent\_runtime\_allowed\_workload\_identities](#output\_agent\_runtime\_allowed\_workload\_identities) | CUSTOM\_JWT workload identities allowed to invoke the Runtime, including the module-created Gateway identity when opted in. |
 | <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. Null when create\_runtime = false. |
