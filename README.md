@@ -68,6 +68,7 @@ them by default.
 |---|---|---|
 | [`modules/identity`](modules/identity) | Workload identities, write-only API-key/OAuth2 providers, token-vault KMS configuration | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/policy`](modules/policy) | Optional Policy Engine, caller-owned Cedar, and standalone resource policies | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
+| [`modules/temporal-policy`](modules/temporal-policy) | Dogwood temporal policies for an existing Policy Engine | Terraform/OpenTofu 1.11, AWSCC Provider 1.96 |
 | [`modules/browser`](modules/browser) | Browser, Browser Profiles, VPC/recording/certificate/enterprise-policy options | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/managed-harness`](modules/managed-harness) | Managed Harness models, tools, budgets, storage, truncation, JWT and Memory settings | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
 | [`modules/evaluation`](modules/evaluation) | Code/LLM Evaluators and online evaluation sampling | Terraform/OpenTofu 1.11, AWS Provider 6.61 |
@@ -94,6 +95,7 @@ them by default.
     ├── gateway/          # aws_bedrockagentcore_gateway + general Gateway Targets (create_gateway = true)
     ├── identity/         # Workload Identity + credential providers + token vault
     ├── policy/           # Policy Engine, Cedar, or standalone resource policies
+    ├── temporal-policy/  # Dogwood temporal policies
     ├── browser/          # Browser + Browser Profiles
     ├── managed-harness/  # Managed Harness
     ├── evaluation/       # Evaluators + online evaluation configs

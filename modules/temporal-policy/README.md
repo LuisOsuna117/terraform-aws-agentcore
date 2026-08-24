@@ -1,14 +1,15 @@
-# AgentCore temporal policy preview submodule
+# AgentCore temporal policy submodule
 
 Creates opt-in Dogwood temporal policies on an existing AgentCore Policy
-Engine. It is isolated because the native AWS provider does not yet expose the
-`definition.policy` shape. The safer default is `LOG_ONLY`; callers must choose
-`ACTIVE` explicitly after validating and reviewing the formal policy. Gateway
-association mode remains the separate `ENFORCE` control.
+Engine. This submodule uses the AWS Cloud Control provider because the native
+AWS provider does not yet expose the `definition.policy` shape. The safer
+default is `LOG_ONLY`; callers must choose `ACTIVE` explicitly after validating
+and reviewing the formal policy. Gateway association mode remains the separate
+`ENFORCE` control.
 
 ```hcl
 module "temporal_policy" {
-  source = "LuisOsuna117/agentcore/aws//modules/policy-temporal-preview"
+  source = "LuisOsuna117/agentcore/aws//modules/temporal-policy"
 
   policy_engine_id = module.policy.policy_engine_id
   policies = {

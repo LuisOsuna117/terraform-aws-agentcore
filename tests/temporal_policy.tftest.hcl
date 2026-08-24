@@ -10,7 +10,7 @@ run "temporal_policy_is_explicit_and_fail_closed" {
   command = apply
 
   module {
-    source = "./modules/policy-temporal-preview"
+    source = "./modules/temporal-policy"
   }
 
   variables {
@@ -25,7 +25,7 @@ run "temporal_policy_is_explicit_and_fail_closed" {
 
   assert {
     condition     = output.policy_arns["bounded_calls"] == "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy/temporal-policy"
-    error_message = "The preview submodule must expose each temporal policy ARN."
+    error_message = "The submodule must expose each temporal policy ARN."
   }
 }
 
@@ -33,7 +33,7 @@ run "temporal_policy_defaults_to_log_only" {
   command = plan
 
   module {
-    source = "./modules/policy-temporal-preview"
+    source = "./modules/temporal-policy"
   }
 
   variables {
