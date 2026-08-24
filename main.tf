@@ -41,13 +41,32 @@ locals {
   # create_build_pipeline = false → caller-supplied image_uri (BYO)
   effective_image_uri = var.create_build_pipeline ? module.build[0].image_uri : var.image_uri
 
+  effective_runtime_authorizer_configuration = var.runtime_authorizer_configuration == null ? null : {
+    discovery_url              = var.runtime_authorizer_configuration.discovery_url
+    allowed_audience           = var.runtime_authorizer_configuration.allowed_audience
+    allowed_clients            = var.runtime_authorizer_configuration.allowed_clients
+    allowed_scopes             = var.runtime_authorizer_configuration.allowed_scopes
+    hosting_environment_arns   = var.runtime_authorizer_configuration.hosting_environment_arns
+    custom_claims              = var.runtime_authorizer_configuration.custom_claims
+    private_endpoint           = var.runtime_authorizer_configuration.private_endpoint
+    private_endpoint_overrides = var.runtime_authorizer_configuration.private_endpoint_overrides
+    workload_identities = var.runtime_trust_gateway_workload_identity ? distinct(concat(
+      var.runtime_authorizer_configuration.workload_identities,
+      [module.gateway[0].workload_identity_arn],
+    )) : var.runtime_authorizer_configuration.workload_identities
+  }
+
   # Optional self-target: attach the runtime created by this root module call to
   # the gateway created by this same call. The stable map key is "runtime".
   gateway_runtime_target_key  = "runtime"
   gateway_runtime_target_name = coalesce(var.gateway_runtime_target.name, local.gateway_runtime_target_key)
   gateway_runtime_uses_mcp    = var.server_protocol == "MCP"
-  gateway_runtime_arn         = try(module.runtime[0].agent_runtime_arn, null)
-  gateway_runtime_arn_parts   = local.gateway_runtime_arn == null ? [] : split(":", local.gateway_runtime_arn)
+  effective_gateway_protocol_type = (
+    var.gateway_protocol_type != null ? var.gateway_protocol_type :
+    var.gateway_attach_runtime_target && local.gateway_runtime_uses_mcp ? "MCP" : null
+  )
+  gateway_runtime_arn       = try(module.runtime[0].agent_runtime_arn, null)
+  gateway_runtime_arn_parts = local.gateway_runtime_arn == null ? [] : split(":", local.gateway_runtime_arn)
   gateway_runtime_resource_parts = length(local.gateway_runtime_arn_parts) <= 5 ? [] : split(
     "/",
     join(":", slice(local.gateway_runtime_arn_parts, 5, length(local.gateway_runtime_arn_parts))),
@@ -93,16 +112,6 @@ locals {
       timeouts                          = var.gateway_runtime_target.timeouts
     }
   } : {}
-
-  effective_gateway_targets = merge(
-    var.gateway_targets,
-    local.gateway_runtime_target,
-  )
-
-  effective_gateway_runtime_invoke_arns = concat(
-    var.gateway_runtime_invoke_arns,
-    var.gateway_attach_runtime_target && var.create_runtime ? [local.gateway_runtime_arn] : [],
-  )
 
   gateway_target_names = [for key, target in var.gateway_targets : coalesce(try(target.name, null), key)]
 
@@ -248,6 +257,14 @@ resource "terraform_data" "validations" {
     }
 
     precondition {
+      condition = !var.gateway_attach_runtime_target || alltrue([
+        for target in values(var.gateway_targets) :
+        local.gateway_runtime_uses_mcp == contains(try(keys(target.target_configuration), []), "mcp")
+      ])
+      error_message = "The attached Runtime target and gateway_targets must use the same HTTP or MCP Gateway protocol."
+    }
+
+    precondition {
       condition     = var.gateway_resource_policy_configuration == null || (var.create_gateway && var.gateway_authorizer_type == "AWS_IAM")
       error_message = "gateway_resource_policy_configuration requires create_gateway = true and gateway_authorizer_type = \"AWS_IAM\"."
     }
@@ -260,6 +277,17 @@ resource "terraform_data" "validations" {
     precondition {
       condition     = var.runtime_resource_policy_configuration == null ? true : (!var.runtime_resource_policy_configuration.allow_gateway_role || var.create_gateway)
       error_message = "runtime_resource_policy_configuration.allow_gateway_role requires create_gateway = true."
+    }
+
+    precondition {
+      condition = !var.runtime_trust_gateway_workload_identity || (
+        var.create_runtime &&
+        var.create_gateway &&
+        var.gateway_attach_runtime_target &&
+        var.runtime_authorizer_configuration != null &&
+        try(var.gateway_runtime_target.credential_provider_configuration.jwt_passthrough, false)
+      )
+      error_message = "runtime_trust_gateway_workload_identity requires a module-created Runtime and Gateway, an attached Runtime target using JWT passthrough, and runtime_authorizer_configuration."
     }
 
   }
@@ -321,7 +349,7 @@ module "runtime" {
   vpc_security_group_ids = var.vpc_security_group_ids
   vpc_subnet_ids         = var.vpc_subnet_ids
 
-  authorizer_configuration = var.runtime_authorizer_configuration
+  authorizer_configuration = local.effective_runtime_authorizer_configuration
 
   # Lifecycle (optional)
   idle_runtime_session_timeout = var.idle_runtime_session_timeout
@@ -424,17 +452,65 @@ module "gateway" {
   role_policy_statements      = var.gateway_role_policy_statements
   authorizer_type             = var.gateway_authorizer_type
   authorizer_configuration    = var.gateway_authorizer_configuration
-  protocol_type               = var.gateway_protocol_type
+  protocol_type               = local.effective_gateway_protocol_type
   protocol_configuration      = var.gateway_protocol_configuration
   policy_engine_configuration = var.gateway_policy_engine_configuration
   interceptor_configurations  = var.gateway_interceptor_configurations
-  targets                     = local.effective_gateway_targets
-  runtime_invoke_arns         = local.effective_gateway_runtime_invoke_arns
+  targets                     = var.gateway_targets
+  runtime_invoke_arns         = var.gateway_runtime_invoke_arns
   kms_key_arn                 = var.gateway_kms_key_arn
   exception_level             = var.gateway_exception_level
   region                      = var.gateway_region
   timeouts                    = var.gateway_timeouts
   tags                        = local.common_tags
+}
+
+# The Runtime self-target is deliberately created after both the Gateway and
+# Runtime. Keeping it outside module.gateway avoids a Gateway <-> Runtime graph
+# cycle when CUSTOM_JWT restricts the Runtime to this Gateway workload.
+module "gateway_runtime_target" {
+  count  = var.create_gateway && var.create_runtime && var.gateway_attach_runtime_target ? 1 : 0
+  source = "./modules/gateway-target"
+
+  gateway_identifier                = module.gateway[0].gateway_id
+  name                              = local.gateway_runtime_target_name
+  description                       = var.gateway_runtime_target.description
+  region                            = var.gateway_runtime_target.region
+  target_configuration              = local.gateway_runtime_target[local.gateway_runtime_target_key].target_configuration
+  credential_provider_configuration = var.gateway_runtime_target.credential_provider_configuration
+  metadata_configuration            = var.gateway_runtime_target.metadata_configuration
+  private_endpoint                  = var.gateway_runtime_target.private_endpoint
+  timeouts                          = var.gateway_runtime_target.timeouts
+}
+
+# module.gateway cannot infer this permission after the self-target is split
+# from it. Grant it only to a module-created Gateway role when the target uses
+# that role; existing roles remain caller-owned and JWT passthrough receives no
+# unnecessary Runtime invocation grant.
+resource "aws_iam_role_policy" "gateway_runtime_invoke" {
+  count = (
+    var.create_gateway &&
+    var.create_runtime &&
+    var.gateway_attach_runtime_target &&
+    var.gateway_create_role &&
+    try(var.gateway_runtime_target.credential_provider_configuration.gateway_iam_role, null) != null
+  ) ? 1 : 0
+
+  name = "${coalesce(var.gateway_name, var.name)}-runtime-invoke"
+  role = var.gateway_create_role ? module.gateway[0].role_name : element(reverse(split("/", var.gateway_role_arn)), 0)
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "InvokeAttachedAgentCoreRuntime"
+      Effect = "Allow"
+      Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+      Resource = [
+        local.gateway_runtime_arn,
+        "${local.gateway_runtime_arn}/runtime-endpoint/*",
+      ]
+    }]
+  })
 }
 
 # ==============================================================================

@@ -32,6 +32,14 @@ output "agent_runtime_workload_identity_arn" {
   value       = var.create_runtime ? module.runtime[0].workload_identity_arn : null
 }
 
+output "agent_runtime_allowed_workload_identities" {
+  description = "CUSTOM_JWT workload identities allowed to invoke the Runtime, including the module-created Gateway identity when opted in."
+  value = local.effective_runtime_authorizer_configuration == null ? [] : try(
+    local.effective_runtime_authorizer_configuration.workload_identities,
+    [],
+  )
+}
+
 # ==============================================================================
 # AgentCore Code Interpreter
 # ==============================================================================
@@ -191,17 +199,27 @@ output "gateway_workload_identity_arn" {
 
 output "gateway_target_ids" {
   description = "Map of target keys to AgentCore Gateway target IDs. Empty when create_gateway = false."
-  value       = var.create_gateway ? module.gateway[0].gateway_target_ids : {}
+  value = var.create_gateway ? merge(
+    module.gateway[0].gateway_target_ids,
+    var.gateway_attach_runtime_target ? {
+      (local.gateway_runtime_target_key) = module.gateway_runtime_target[0].target_id
+    } : {},
+  ) : {}
 }
 
 output "gateway_target_invocation_urls" {
   description = "Map of direct HTTP target keys to their path-routed Gateway invocation URLs. Empty when create_gateway is false."
-  value       = var.create_gateway ? module.gateway[0].gateway_target_invocation_urls : {}
+  value = var.create_gateway ? merge(
+    module.gateway[0].gateway_target_invocation_urls,
+    var.gateway_attach_runtime_target && !local.gateway_runtime_uses_mcp ? {
+      (local.gateway_runtime_target_key) = "${trimsuffix(module.gateway[0].gateway_url, "/")}/${local.gateway_runtime_target_name}/invocations"
+    } : {},
+  ) : {}
 }
 
 output "gateway_runtime_target_id" {
   description = "Gateway target ID for the module-created runtime target. Null when gateway_attach_runtime_target = false."
-  value       = var.create_gateway && var.gateway_attach_runtime_target ? try(module.gateway[0].gateway_target_ids["runtime"], null) : null
+  value       = var.create_gateway && var.gateway_attach_runtime_target ? module.gateway_runtime_target[0].target_id : null
 }
 
 output "gateway_role_arn" {

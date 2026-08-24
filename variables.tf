@@ -193,6 +193,12 @@ variable "runtime_authorizer_configuration" {
   default = null
 }
 
+variable "runtime_trust_gateway_workload_identity" {
+  description = "When true, adds the workload identity of the Gateway created by this module call to the Runtime CUSTOM_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation."
+  type        = bool
+  default     = false
+}
+
 variable "runtime_region" {
   description = "AWS Region in which to manage the Runtime. Defaults to the provider Region."
   type        = string

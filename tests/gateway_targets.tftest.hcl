@@ -124,6 +124,26 @@ run "self_runtime_defaults_to_http_target" {
   }
 }
 
+run "self_mcp_runtime_infers_mcp_gateway_protocol" {
+  command = plan
+
+  variables {
+    name                          = "self-mcp-gateway"
+    create_build_pipeline         = false
+    create_runtime                = true
+    create_execution_role         = true
+    image_uri                     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/self-mcp-gateway:test"
+    server_protocol               = "MCP"
+    create_gateway                = true
+    gateway_attach_runtime_target = true
+  }
+
+  assert {
+    condition     = output.gateway_protocol_type == "MCP"
+    error_message = "An attached MCP Runtime must infer the MCP Gateway protocol."
+  }
+}
+
 run "jwt_passthrough_does_not_grant_runtime_invoke_to_gateway_role" {
   command = plan
 
