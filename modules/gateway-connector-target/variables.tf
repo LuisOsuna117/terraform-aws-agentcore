@@ -24,7 +24,7 @@ variable "description" {
   default     = null
 
   validation {
-    condition     = var.description == null || (length(var.description) >= 1 && length(var.description) <= 200)
+    condition     = var.description == null ? true : length(var.description) >= 1 && length(var.description) <= 200
     error_message = "description must contain between 1 and 200 characters when set."
   }
 }
