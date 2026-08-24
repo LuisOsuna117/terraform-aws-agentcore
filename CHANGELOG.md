@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.1.1...v1.2.0) (2026-08-24)
+
+### 🚀 Features
+
+* **policy:** add temporal policy preview ([5ee2b45](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/5ee2b4573c7d0a664c86e9c99b707ed31e6687a6))
+* **runtime:** trust gateway workload identity ([92d4ca8](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/92d4ca8960b5f57d0d0c224ef6c916fe5a13f80e))
+
+### 🔧 Code Refactoring
+
+* **policy:** name temporal submodule explicitly ([7f03be2](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/7f03be2c88e5e94368c82b77b05def4f727be66e))
+
 ## [1.1.1](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.1.0...v1.1.1) (2026-08-23)
 
 ### 🐛 Bug Fixes
