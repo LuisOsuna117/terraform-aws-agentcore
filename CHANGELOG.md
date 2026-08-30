@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.3.0...v1.4.0) (2026-08-30)
+
+### 🚀 Features
+
+* **gateway:** support HTTP runtime target schemas [skip ci] ([af21c06](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/af21c06b0595bc2faf247d02f697c3c34aefb57e))
+
+### 🐛 Bug Fixes
+
+* **gateway:** isolate runtime schema provider gap ([bd73d56](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/bd73d5620504beaea304f19770e5f0622f684f71))
+
 ## [1.3.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.2.0...v1.3.0) (2026-08-30)
 
 ### 🚀 Features
