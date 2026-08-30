@@ -58,6 +58,28 @@ resource "aws_bedrockagentcore_gateway_target" "this" {
         agentcore_runtime {
           arn       = http.value.agentcore_runtime.arn
           qualifier = http.value.agentcore_runtime.qualifier
+
+          dynamic "schema" {
+            for_each = http.value.agentcore_runtime.schema == null ? [] : [http.value.agentcore_runtime.schema]
+            content {
+              source {
+                dynamic "inline_payload" {
+                  for_each = schema.value.inline_payload == null ? [] : [schema.value.inline_payload]
+                  content {
+                    payload = inline_payload.value.payload
+                  }
+                }
+
+                dynamic "s3" {
+                  for_each = schema.value.s3 == null ? [] : [schema.value.s3]
+                  content {
+                    uri                     = s3.value.uri
+                    bucket_owner_account_id = s3.value.bucket_owner_account_id
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

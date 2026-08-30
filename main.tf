@@ -104,6 +104,7 @@ locals {
             agentcore_runtime = {
               arn       = local.gateway_runtime_arn
               qualifier = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
+              schema    = var.gateway_runtime_target.schema
             }
           }
         },
