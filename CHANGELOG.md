@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.2.0...v1.3.0) (2026-08-30)
+
+### 🚀 Features
+
+* add opt-in services to single-runtime calls ([178ee6e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/178ee6e39212b7394b81f2e0e130aafc8b5fd0c0))
+* **gateway:** add versioned connector targets ([c60fceb](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/c60fceb89d4221313e4c4e5f7427b9dc6b62e3e6))
+
+### 🐛 Bug Fixes
+
+* **ci:** support nullable policy mode on Terraform 1.11 ([820ef45](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/820ef45b47c03c661257b280e9a3cbe3a86dbcad))
+* **gateway:** validate connector module contract ([e2b589a](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/e2b589a270051f3d7dd08509fb0bec2608740eb2))
+
 ## [1.2.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.1.1...v1.2.0) (2026-08-24)
 
 ### 🚀 Features
