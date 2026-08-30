@@ -202,7 +202,11 @@ output "gateway_target_ids" {
   value = var.create_gateway ? merge(
     module.gateway[0].gateway_target_ids,
     var.gateway_attach_runtime_target ? {
-      (local.gateway_runtime_target_key) = module.gateway_runtime_target[0].target_id
+      (local.gateway_runtime_target_key) = (
+        var.gateway_runtime_target.schema != null && !local.gateway_runtime_uses_mcp ?
+        module.gateway_runtime_schema_target[0].target_id :
+        module.gateway_runtime_target[0].target_id
+      )
     } : {},
   ) : {}
 }
@@ -219,7 +223,11 @@ output "gateway_target_invocation_urls" {
 
 output "gateway_runtime_target_id" {
   description = "Gateway target ID for the module-created runtime target. Null when gateway_attach_runtime_target = false."
-  value       = var.create_gateway && var.gateway_attach_runtime_target ? module.gateway_runtime_target[0].target_id : null
+  value = var.create_gateway && var.gateway_attach_runtime_target ? (
+    var.gateway_runtime_target.schema != null && !local.gateway_runtime_uses_mcp ?
+    module.gateway_runtime_schema_target[0].target_id :
+    module.gateway_runtime_target[0].target_id
+  ) : null
 }
 
 output "gateway_role_arn" {

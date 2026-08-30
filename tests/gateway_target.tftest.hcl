@@ -16,15 +16,6 @@ run "http_runtime_target_uses_general_configuration" {
         agentcore_runtime = {
           arn       = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/Operator-abcdefghij"
           qualifier = "LIVE"
-          schema = {
-            inline_payload = {
-              payload = jsonencode({
-                openapi = "3.0.3"
-                info    = { title = "Operator Runtime", version = "1.0.0" }
-                paths   = {}
-              })
-            }
-          }
         }
       }
     }
@@ -41,11 +32,6 @@ run "http_runtime_target_uses_general_configuration" {
   assert {
     condition     = aws_bedrockagentcore_gateway_target.this.target_configuration[0].http[0].agentcore_runtime[0].qualifier == "LIVE"
     error_message = "HTTP Runtime targets must preserve their Runtime qualifier."
-  }
-
-  assert {
-    condition     = strcontains(aws_bedrockagentcore_gateway_target.this.target_configuration[0].http[0].agentcore_runtime[0].schema[0].source[0].inline_payload[0].payload, "Operator Runtime")
-    error_message = "HTTP Runtime targets must preserve their inline API schema so AgentCore Policy can evaluate request input."
   }
 
   assert {
@@ -67,37 +53,6 @@ run "http_runtime_target_uses_general_configuration" {
     condition     = aws_bedrockagentcore_gateway_target.this.metadata_configuration[0].allowed_response_headers == null
     error_message = "Omitted response headers must not be sent to AgentCore as an empty set."
   }
-}
-
-run "http_runtime_target_rejects_ambiguous_schema_sources" {
-  command = plan
-
-  module {
-    source = "./modules/gateway-target"
-  }
-
-  variables {
-    gateway_identifier = "gateway-abcdefghij"
-    name               = "ambiguous-runtime"
-
-    target_configuration = {
-      http = {
-        agentcore_runtime = {
-          arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/Operator-abcdefghij"
-          schema = {
-            inline_payload = {
-              payload = jsonencode({ openapi = "3.0.3", paths = {} })
-            }
-            s3 = {
-              uri = "s3://schemas/runtime-openapi.json"
-            }
-          }
-        }
-      }
-    }
-  }
-
-  expect_failures = [var.target_configuration]
 }
 
 run "mcp_server_target_supports_schema_and_private_connectivity" {

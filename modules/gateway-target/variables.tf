@@ -21,21 +21,12 @@ variable "region" {
 }
 
 variable "target_configuration" {
-  description = "Target configuration. Set exactly one of http or mcp; HTTP Runtime targets may include one API schema source."
+  description = "Target configuration. Set exactly one of http or mcp."
   type = object({
     http = optional(object({
       agentcore_runtime = object({
         arn       = string
         qualifier = optional(string)
-        schema = optional(object({
-          inline_payload = optional(object({
-            payload = string
-          }))
-          s3 = optional(object({
-            uri                     = string
-            bucket_owner_account_id = optional(string)
-          }))
-        }))
       })
     }))
     mcp = optional(object({
@@ -111,14 +102,6 @@ variable "target_configuration" {
       var.target_configuration.mcp == null ? "" : "mcp",
     ])) == 1
     error_message = "target_configuration must set exactly one of http or mcp."
-  }
-
-  validation {
-    condition = try(var.target_configuration.http.agentcore_runtime.schema, null) == null || length(compact([
-      try(var.target_configuration.http.agentcore_runtime.schema.inline_payload, null) == null ? "" : "inline_payload",
-      try(var.target_configuration.http.agentcore_runtime.schema.s3, null) == null ? "" : "s3",
-    ])) == 1
-    error_message = "An HTTP Runtime schema must set exactly one of inline_payload or s3."
   }
 
   validation {
