@@ -29,7 +29,7 @@ module "agentcore" {
   runtime_trust_gateway_workload_identity = true
   gateway_runtime_target = {
     credential_provider_configuration = {
-      jwt_passthrough = {}
+      jwt_passthrough = true
     }
   }
 
