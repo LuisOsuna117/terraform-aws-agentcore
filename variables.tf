@@ -935,7 +935,7 @@ variable "gateway_policy_engine_mode" {
   default     = null
 
   validation {
-    condition     = var.gateway_policy_engine_mode == null || contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_mode)
+    condition     = var.gateway_policy_engine_mode == null ? true : contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_mode)
     error_message = "gateway_policy_engine_mode must be LOG_ONLY, ENFORCE, or null."
   }
 }
