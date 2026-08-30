@@ -834,12 +834,21 @@ variable "gateway_attach_runtime_target" {
 }
 
 variable "gateway_runtime_target" {
-  description = "Configuration for the module-created Runtime target when gateway_attach_runtime_target is true."
+  description = "Configuration for the module-created Runtime target when gateway_attach_runtime_target is true. HTTP Runtime targets may opt into one inline or S3 API schema source."
   type = object({
-    name                              = optional(string)
-    description                       = optional(string)
-    region                            = optional(string)
-    qualifier                         = optional(string, "DEFAULT")
+    name        = optional(string)
+    description = optional(string)
+    region      = optional(string)
+    qualifier   = optional(string, "DEFAULT")
+    schema = optional(object({
+      inline_payload = optional(object({
+        payload = string
+      }))
+      s3 = optional(object({
+        uri                     = string
+        bucket_owner_account_id = optional(string)
+      }))
+    }))
     credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })
     metadata_configuration = optional(object({
       allowed_query_parameters = optional(set(string), [])
@@ -859,6 +868,14 @@ variable "gateway_runtime_target" {
   validation {
     condition     = var.gateway_runtime_target.name == null || can(regex("^([0-9a-zA-Z][-]?){1,100}$", var.gateway_runtime_target.name))
     error_message = "gateway_runtime_target.name must contain only letters, numbers, and hyphens, start with a letter or number, and be at most 100 characters."
+  }
+
+  validation {
+    condition = var.gateway_runtime_target.schema == null || length(compact([
+      try(var.gateway_runtime_target.schema.inline_payload, null) == null ? "" : "inline_payload",
+      try(var.gateway_runtime_target.schema.s3, null) == null ? "" : "s3",
+    ])) == 1
+    error_message = "gateway_runtime_target.schema must set exactly one of inline_payload or s3."
   }
 }
 

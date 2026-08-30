@@ -280,7 +280,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_role_policy_arns"></a> [gateway\_role\_policy\_arns](#input\_gateway\_role\_policy\_arns) | Managed policy ARNs to attach to the module-created Gateway role. | `set(string)` | `[]` | no |
 | <a name="input_gateway_role_policy_statements"></a> [gateway\_role\_policy\_statements](#input\_gateway\_role\_policy\_statements) | Additional least-privilege IAM statements for the module-created Gateway role. | <pre>list(object({<br/>    sid       = optional(string)<br/>    effect    = optional(string, "Allow")<br/>    actions   = set(string)<br/>    resources = set(string)<br/>    condition = optional(any)<br/>  }))</pre> | `[]` | no |
 | <a name="input_gateway_runtime_invoke_arns"></a> [gateway\_runtime\_invoke\_arns](#input\_gateway\_runtime\_invoke\_arns) | Additional AgentCore Runtime ARNs the module-created Gateway role may invoke. HTTP Runtime target ARNs are inferred automatically. | `list(string)` | `[]` | no |
-| <a name="input_gateway_runtime_target"></a> [gateway\_runtime\_target](#input\_gateway\_runtime\_target) | Configuration for the module-created Runtime target when gateway\_attach\_runtime\_target is true. | <pre>object({<br/>    name                              = optional(string)<br/>    description                       = optional(string)<br/>    region                            = optional(string)<br/>    qualifier                         = optional(string, "DEFAULT")<br/>    credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })<br/>    metadata_configuration = optional(object({<br/>      allowed_query_parameters = optional(set(string), [])<br/>      allowed_request_headers  = optional(set(string), [])<br/>      allowed_response_headers = optional(set(string), [])<br/>    }))<br/>    private_endpoint = optional(any)<br/>    timeouts = optional(object({<br/>      create = optional(string)<br/>      update = optional(string)<br/>      delete = optional(string)<br/>    }))<br/>  })</pre> | `{}` | no |
+| <a name="input_gateway_runtime_target"></a> [gateway\_runtime\_target](#input\_gateway\_runtime\_target) | Configuration for the module-created Runtime target when gateway\_attach\_runtime\_target is true. HTTP Runtime targets may opt into one inline or S3 API schema source. | <pre>object({<br/>    name        = optional(string)<br/>    description = optional(string)<br/>    region      = optional(string)<br/>    qualifier   = optional(string, "DEFAULT")<br/>    schema = optional(object({<br/>      inline_payload = optional(object({<br/>        payload = string<br/>      }))<br/>      s3 = optional(object({<br/>        uri                     = string<br/>        bucket_owner_account_id = optional(string)<br/>      }))<br/>    }))<br/>    credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })<br/>    metadata_configuration = optional(object({<br/>      allowed_query_parameters = optional(set(string), [])<br/>      allowed_request_headers  = optional(set(string), [])<br/>      allowed_response_headers = optional(set(string), [])<br/>    }))<br/>    private_endpoint = optional(any)<br/>    timeouts = optional(object({<br/>      create = optional(string)<br/>      update = optional(string)<br/>      delete = optional(string)<br/>    }))<br/>  })</pre> | `{}` | no |
 | <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | Map of general Gateway Targets using the native target\_configuration, credential, metadata, private endpoint, and timeout shapes. | `any` | `{}` | no |
 | <a name="input_gateway_timeouts"></a> [gateway\_timeouts](#input\_gateway\_timeouts) | Optional create, update, and delete timeouts for the Gateway. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_idle_runtime_session_timeout"></a> [idle\_runtime\_session\_timeout](#input\_idle\_runtime\_session\_timeout) | Idle session timeout in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
@@ -654,6 +654,20 @@ The two resource-policy configurations remain opt-in. The module injects the
 exact generated resource ARN, explicitly denies unlisted callers, and can use
 its own Gateway role as the Runtime principal. This follows the
 [AgentCore resource-policy requirements](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html).
+
+For an HTTP Runtime target governed by AgentCore Policy, provide the API schema
+explicitly; MCP and A2A targets receive their protocol schema from AgentCore:
+
+```hcl
+gateway_runtime_target = {
+  name = "operator"
+  schema = {
+    inline_payload = {
+      payload = file("${path.module}/runtime-openapi.json")
+    }
+  }
+}
+```
 
 ### Multiple MCP targets
 
