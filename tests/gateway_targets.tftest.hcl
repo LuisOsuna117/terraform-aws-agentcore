@@ -11,6 +11,23 @@ mock_provider "aws" {
       agent_runtime_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/SelfAgent-a1b2c3d4e5"
     }
   }
+
+  mock_resource "aws_bedrockagentcore_gateway" {
+    defaults = {
+      gateway_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gateway-a1b2c3d4e5"
+      gateway_id  = "gateway-a1b2c3d4e5"
+      gateway_url = "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com"
+    }
+  }
+
+  mock_resource "aws_cloudformation_stack" {
+    defaults = {
+      outputs = {
+        TargetId   = "runtime-schema-abcdefghij"
+        GatewayArn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gateway-a1b2c3d4e5"
+      }
+    }
+  }
 }
 mock_provider "archive" {}
 mock_provider "null" {}
@@ -121,6 +138,43 @@ run "self_runtime_defaults_to_http_target" {
   assert {
     condition     = length(output.gateway_target_invocation_urls) == 1
     error_message = "A default HTTP runtime attached to a general gateway must use an HTTP target."
+  }
+}
+
+run "self_runtime_with_schema_uses_the_isolated_target" {
+  command = apply
+
+  variables {
+    name                          = "schema-agent-gateway"
+    create_build_pipeline         = false
+    create_runtime                = true
+    create_execution_role         = true
+    image_uri                     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/schema-agent-gateway:test"
+    create_gateway                = true
+    gateway_attach_runtime_target = true
+
+    gateway_runtime_target = {
+      name = "SchemaRuntime"
+      schema = {
+        inline_payload = {
+          payload = jsonencode({
+            openapi = "3.0.3"
+            info    = { title = "Schema Runtime", version = "1.0.0" }
+            paths   = {}
+          })
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = output.gateway_runtime_target_id == "runtime-schema-abcdefghij"
+    error_message = "The root module must route schema-bearing Runtime targets through the isolated implementation."
+  }
+
+  assert {
+    condition     = output.gateway_target_invocation_urls["runtime"] == "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com/SchemaRuntime/invocations"
+    error_message = "The schema-bearing Runtime target must preserve the direct Gateway invocation URL."
   }
 }
 

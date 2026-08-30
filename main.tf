@@ -104,7 +104,6 @@ locals {
             agentcore_runtime = {
               arn       = local.gateway_runtime_arn
               qualifier = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
-              schema    = var.gateway_runtime_target.schema
             }
           }
         },
@@ -314,6 +313,11 @@ resource "terraform_data" "validations" {
     precondition {
       condition     = !var.gateway_attach_runtime_target || var.create_gateway
       error_message = "gateway_attach_runtime_target = true requires create_gateway = true."
+    }
+
+    precondition {
+      condition     = var.gateway_runtime_target.schema == null || !local.gateway_runtime_uses_mcp
+      error_message = "gateway_runtime_target.schema is supported only for HTTP Runtime targets."
     }
 
     precondition {
@@ -592,7 +596,12 @@ module "gateway" {
 # Runtime. Keeping it outside module.gateway avoids a Gateway <-> Runtime graph
 # cycle when CUSTOM_JWT restricts the Runtime to this Gateway workload.
 module "gateway_runtime_target" {
-  count  = var.create_gateway && var.create_runtime && var.gateway_attach_runtime_target ? 1 : 0
+  count = (
+    var.create_gateway &&
+    var.create_runtime &&
+    var.gateway_attach_runtime_target &&
+    (var.gateway_runtime_target.schema == null || local.gateway_runtime_uses_mcp)
+  ) ? 1 : 0
   source = "./modules/gateway-target"
 
   gateway_identifier                = module.gateway[0].gateway_id
@@ -603,6 +612,34 @@ module "gateway_runtime_target" {
   credential_provider_configuration = var.gateway_runtime_target.credential_provider_configuration
   metadata_configuration            = var.gateway_runtime_target.metadata_configuration
   private_endpoint                  = var.gateway_runtime_target.private_endpoint
+  timeouts                          = var.gateway_runtime_target.timeouts
+}
+
+# AWS Provider releases through 6.62 do not expose the HTTP Runtime schema
+# block. Keep the provider gap isolated so schema-less targets remain native
+# and this module can move back to the native resource without changing the
+# root input contract.
+module "gateway_runtime_schema_target" {
+  count = (
+    var.create_gateway &&
+    var.create_runtime &&
+    var.gateway_attach_runtime_target &&
+    var.gateway_runtime_target.schema != null &&
+    !local.gateway_runtime_uses_mcp
+  ) ? 1 : 0
+  source = "./modules/gateway-runtime-target-schema"
+
+  gateway_identifier                = module.gateway[0].gateway_id
+  name                              = local.gateway_runtime_target_name
+  description                       = var.gateway_runtime_target.description
+  runtime_arn                       = local.gateway_runtime_arn
+  qualifier                         = coalesce(var.gateway_runtime_target.qualifier, "DEFAULT")
+  schema                            = var.gateway_runtime_target.schema
+  credential_provider_configuration = var.gateway_runtime_target.credential_provider_configuration
+  metadata_configuration            = var.gateway_runtime_target.metadata_configuration
+  private_endpoint                  = var.gateway_runtime_target.private_endpoint
+  region                            = var.gateway_runtime_target.region
+  tags                              = local.common_tags
   timeouts                          = var.gateway_runtime_target.timeouts
 }
 

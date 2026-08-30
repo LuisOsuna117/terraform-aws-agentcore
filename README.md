@@ -183,6 +183,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
 | <a name="module_gateway_connector_target"></a> [gateway\_connector\_target](#module\_gateway\_connector\_target) | ./modules/gateway-connector-target | n/a |
 | <a name="module_gateway_policies"></a> [gateway\_policies](#module\_gateway\_policies) | ./modules/policy | n/a |
+| <a name="module_gateway_runtime_schema_target"></a> [gateway\_runtime\_schema\_target](#module\_gateway\_runtime\_schema\_target) | ./modules/gateway-runtime-target-schema | n/a |
 | <a name="module_gateway_runtime_target"></a> [gateway\_runtime\_target](#module\_gateway\_runtime\_target) | ./modules/gateway-target | n/a |
 | <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
 | <a name="module_policy_engine"></a> [policy\_engine](#module\_policy\_engine) | ./modules/policy | n/a |
