@@ -240,3 +240,89 @@ output "resource_policies" {
   description = "Resource policies attached to the Runtime and Gateway created by this module call."
   value       = length(module.resource_policy) == 0 ? {} : module.resource_policy[0].resource_policies
 }
+
+# ==============================================================================
+# Composed AgentCore resources
+# ==============================================================================
+
+output "additional_agent_runtimes" {
+  description = "Additional enabled Runtime instances keyed by caller-defined name."
+  value = {
+    for key, runtime in module.additional_runtime : key => {
+      id                 = runtime.agent_runtime_id
+      arn                = runtime.agent_runtime_arn
+      name               = runtime.agent_runtime_name
+      execution_role_arn = local.additional_runtime_execution_role_arns[key]
+    }
+  }
+}
+
+output "additional_gateways" {
+  description = "Additional enabled Gateway instances keyed by caller-defined name."
+  value = {
+    for key, gateway in module.additional_gateway : key => {
+      id                     = gateway.gateway_id
+      arn                    = gateway.gateway_arn
+      url                    = gateway.gateway_url
+      role_arn               = gateway.role_arn
+      target_ids             = gateway.gateway_target_ids
+      target_invocation_urls = gateway.gateway_target_invocation_urls
+      runtime_target_id      = try(module.additional_gateway_runtime_target[key].target_id, null)
+    }
+  }
+}
+
+output "policy_engine_id" {
+  description = "ID of the module-created Policy Engine, or null when disabled."
+  value       = var.create_policy_engine ? module.policy_engine[0].policy_engine_id : null
+}
+
+output "policy_engine_arn" {
+  description = "ARN of the module-created Policy Engine, or null when disabled."
+  value       = var.create_policy_engine ? module.policy_engine[0].policy_engine_arn : null
+}
+
+output "policy_arns" {
+  description = "Cedar and temporal policy ARNs keyed by caller-defined name."
+  value = merge(
+    length(module.gateway_policies) == 0 ? {} : module.gateway_policies[0].policy_arns,
+    { for key, stack in aws_cloudformation_stack.temporal_policy : key => stack.outputs["PolicyArn"] },
+  )
+}
+
+output "browser_id" {
+  description = "ID of the module-created Browser, or null when disabled."
+  value       = var.create_browser ? module.browser[0].browser_id : null
+}
+
+output "browser_arn" {
+  description = "ARN of the module-created Browser, or null when disabled."
+  value       = var.create_browser ? module.browser[0].browser_arn : null
+}
+
+output "browser_profile_ids" {
+  description = "Browser Profile IDs keyed by caller-defined name."
+  value       = var.create_browser ? module.browser[0].profile_ids : {}
+}
+
+output "evaluators" {
+  description = "Evaluator IDs and ARNs keyed by caller-defined name."
+  value       = var.create_evaluations ? module.evaluation[0].evaluators : {}
+}
+
+output "online_evaluations" {
+  description = "Online evaluation IDs and ARNs keyed by caller-defined name."
+  value       = var.create_evaluations ? module.evaluation[0].online_evaluations : {}
+}
+
+output "gateway_connector_targets" {
+  description = "Built-in connector target IDs keyed by caller-defined name."
+  value = {
+    for key, target in module.gateway_connector_target : key => {
+      id                = target.target_id
+      gateway_arn       = target.gateway_arn
+      connector_id      = target.connector_id
+      connector_version = target.connector_version
+    }
+  }
+}

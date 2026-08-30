@@ -69,6 +69,7 @@ jobs:
           - examples/evaluation
           - examples/runtime-endpoint
           - examples/memory-strategy
+          - examples/multi-runtime-governance
           - examples/gateway-target
           - examples/gateway-rule
           - examples/gateway-connector-target
@@ -164,6 +165,7 @@ jobs:
           - examples/evaluation
           - examples/runtime-endpoint
           - examples/memory-strategy
+          - examples/multi-runtime-governance
           - examples/gateway-target
           - examples/gateway-rule
           - examples/gateway-connector-target
