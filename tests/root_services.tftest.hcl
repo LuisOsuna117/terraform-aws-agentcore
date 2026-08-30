@@ -90,9 +90,8 @@ run "one_runtime_composes_only_its_opt_in_services" {
     }
 
     runtime_environment_bindings = {
-      AGENTCORE_MEMORY_ID   = "memory_id"
-      AGENTCORE_BROWSER_ID  = "browser_id"
-      AGENTCORE_GATEWAY_URL = "gateway_url"
+      AGENTCORE_MEMORY_ID  = "memory_id"
+      AGENTCORE_BROWSER_ID = "browser_id"
     }
     runtime_memory_access_enabled  = true
     runtime_browser_access_enabled = true

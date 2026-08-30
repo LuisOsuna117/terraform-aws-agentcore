@@ -205,8 +205,7 @@ locals {
   runtime_environment_binding_values = {
     for name, source in var.runtime_environment_bindings : name => (
       source == "memory_id" ? module.memory[0].memory_id :
-      source == "browser_id" ? module.browser[0].browser_id :
-      module.gateway[0].gateway_url
+      module.browser[0].browser_id
     )
   }
 
@@ -384,7 +383,7 @@ resource "terraform_data" "validations" {
       condition = alltrue([
         for source in values(var.runtime_environment_bindings) :
         source == "memory_id" ? var.create_memory :
-        source == "browser_id" ? var.create_browser : var.create_gateway
+        var.create_browser
       ])
       error_message = "Each Runtime environment binding must reference a resource enabled by this invocation."
     }

@@ -1062,16 +1062,16 @@ variable "browser_profiles" {
 }
 
 variable "runtime_environment_bindings" {
-  description = "Runtime environment variables resolved from resources in this invocation. Values are memory_id, browser_id, or gateway_url."
+  description = "Runtime environment variables resolved from resources in this invocation. Values are memory_id or browser_id."
   type        = map(string)
   default     = {}
 
   validation {
     condition = alltrue([
       for source in values(var.runtime_environment_bindings) :
-      contains(["memory_id", "browser_id", "gateway_url"], source)
+      contains(["memory_id", "browser_id"], source)
     ])
-    error_message = "runtime_environment_bindings values must be memory_id, browser_id, or gateway_url."
+    error_message = "runtime_environment_bindings values must be memory_id or browser_id."
   }
 }
 
