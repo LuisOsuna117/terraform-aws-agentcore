@@ -50,6 +50,9 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — use the native `target_configuration` shape for direct Runtime HTTP routing or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets.
+- 🛡️ **Policy enforcement** — create or reuse a Policy Engine, attach it to the invocation's Gateway, and render caller-owned Cedar or Dogwood templates.
+- 🌐 **Browser and evaluations** — opt in alongside the Runtime that owns their lifecycle and IAM access.
+- 🔎 **Built-in connectors** — attach version-pinned connector targets to the invocation's Gateway without a second wrapper module.
 - 🛡️ **Same-call resource policies** — opt in to IAM role allowlists for the module-created Gateway and Runtime without creating a Policy Engine or managing a second Terraform state.
 - 🔑 **Execution role choice** — explicitly create a role or bring one you manage.
 - 🔒 **Extensible IAM** — append inline statements with `additional_iam_statements` or attach existing managed policies with `additional_iam_policy_arns`.
@@ -59,10 +62,12 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 
 ### Advanced services stay opt-in
 
-AgentCore services remain opt-in. The root module covers the common Runtime,
-build, Memory, Code Interpreter, Gateway, and same-call resource-policy
-composition, while focused submodules expose newer resources without enabling
-them by default.
+AgentCore services remain opt-in. One root-module invocation owns at most one
+Runtime and one Gateway. Invoke the module again for another Runtime lane so
+IAM, state, and lifecycle remain explicit. Policy, Memory, Browser, Code
+Interpreter, Evaluations, and built-in connectors can be enabled beside the
+Runtime that uses them. See
+[`single-runtime-governance`](examples/single-runtime-governance).
 
 | Submodule | Capability | Minimums |
 |---|---|---|
@@ -84,7 +89,7 @@ them by default.
 
 ```
 .
-├── main.tf          # Root wrapper — orchestrates all submodules
+├── main.tf          # Root module — one optional Runtime and Gateway per invocation
 ├── variables.tf
 ├── outputs.tf
 ├── versions.tf
@@ -136,6 +141,10 @@ Resources marked with a condition are only created when the corresponding flag i
 | `aws_bedrockagentcore_gateway_target` | `create_gateway && length(gateway_targets) > 0` | Creates direct HTTP or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets. |
 | `aws_iam_role_policy` (gateway invoke) | `create_gateway && any HTTP Runtime target uses gateway_iam_role` | Grants the gateway role `bedrock-agentcore:InvokeAgentRuntime` on the referenced Runtime and endpoint ARNs. Explicit `gateway_runtime_invoke_arns` are also included. |
 | `aws_bedrockagentcore_resource_policy` | A root resource-policy configuration is non-null | Attaches fail-closed IAM role allowlists to the Runtime or Gateway created by the same module call. |
+| Policy Engine and policies | `create_policy_engine` or policy templates are configured | Attaches policy enforcement to this invocation's Gateway without composing additional Runtimes. |
+| Browser and Browser Profiles | `create_browser = true` | Gives this Runtime an independently opt-in managed browsing surface. |
+| Evaluators and online evaluations | `create_evaluations = true` | Evaluates this invocation's Runtime or caller-supplied telemetry sources. |
+| Built-in connector targets | `create_gateway_connectors = true` | Adds version-pinned connectors to this invocation's Gateway. |
 
 ## 🚫 What this module does NOT create
 
@@ -167,11 +176,16 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Source | Version |
 |------|--------|---------|
+| <a name="module_browser"></a> [browser](#module\_browser) | ./modules/browser | n/a |
 | <a name="module_build"></a> [build](#module\_build) | ./modules/build | n/a |
 | <a name="module_code_interpreter"></a> [code\_interpreter](#module\_code\_interpreter) | ./modules/code-interpreter | n/a |
+| <a name="module_evaluation"></a> [evaluation](#module\_evaluation) | ./modules/evaluation | n/a |
 | <a name="module_gateway"></a> [gateway](#module\_gateway) | ./modules/gateway | n/a |
+| <a name="module_gateway_connector_target"></a> [gateway\_connector\_target](#module\_gateway\_connector\_target) | ./modules/gateway-connector-target | n/a |
+| <a name="module_gateway_policies"></a> [gateway\_policies](#module\_gateway\_policies) | ./modules/policy | n/a |
 | <a name="module_gateway_runtime_target"></a> [gateway\_runtime\_target](#module\_gateway\_runtime\_target) | ./modules/gateway-target | n/a |
 | <a name="module_memory"></a> [memory](#module\_memory) | ./modules/memory | n/a |
+| <a name="module_policy_engine"></a> [policy\_engine](#module\_policy\_engine) | ./modules/policy | n/a |
 | <a name="module_resource_policy"></a> [resource\_policy](#module\_resource\_policy) | ./modules/policy | n/a |
 | <a name="module_runtime"></a> [runtime](#module\_runtime) | ./modules/runtime | n/a |
 
@@ -179,6 +193,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Type |
 |------|------|
+| [aws_cloudformation_stack.temporal_policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_iam_role.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.agent_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.code_interpreter_invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
@@ -200,6 +215,17 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_allow_bedrock_invoke_all"></a> [allow\_bedrock\_invoke\_all](#input\_allow\_bedrock\_invoke\_all) | When true, adds bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream on Resource "*". Prefer model-specific permissions in additional\_iam\_statements. | `bool` | `false` | no |
 | <a name="input_allow_workload_access_token_for_user_id"></a> [allow\_workload\_access\_token\_for\_user\_id](#input\_allow\_workload\_access\_token\_for\_user\_id) | When true, allows bedrock-agentcore:GetWorkloadAccessTokenForUserId. When false, removes it from the baseline Allow and adds an explicit Deny. | `bool` | `false` | no |
 | <a name="input_attach_bedrock_fullaccess_policy"></a> [attach\_bedrock\_fullaccess\_policy](#input\_attach\_bedrock\_fullaccess\_policy) | When true and create\_execution\_role = true, attaches the AWS-managed BedrockAgentCoreFullAccess policy to the execution role. Set to false if you prefer a least-privilege-only setup via additional\_iam\_statements. | `bool` | `false` | no |
+| <a name="input_browser_certificate_secret_arn"></a> [browser\_certificate\_secret\_arn](#input\_browser\_certificate\_secret\_arn) | Optional Browser certificate secret ARN. | `string` | `null` | no |
+| <a name="input_browser_description"></a> [browser\_description](#input\_browser\_description) | Description of the Browser. | `string` | `null` | no |
+| <a name="input_browser_enterprise_policy"></a> [browser\_enterprise\_policy](#input\_browser\_enterprise\_policy) | Optional Browser enterprise policy. | `any` | `null` | no |
+| <a name="input_browser_execution_role_arn"></a> [browser\_execution\_role\_arn](#input\_browser\_execution\_role\_arn) | Optional Browser execution role ARN. | `string` | `null` | no |
+| <a name="input_browser_name"></a> [browser\_name](#input\_browser\_name) | Name of the Browser. Defaults to var.name. | `string` | `null` | no |
+| <a name="input_browser_network_mode"></a> [browser\_network\_mode](#input\_browser\_network\_mode) | Browser network mode: PUBLIC or VPC. | `string` | `"PUBLIC"` | no |
+| <a name="input_browser_profiles"></a> [browser\_profiles](#input\_browser\_profiles) | Browser Profiles keyed by caller-defined name. | `any` | `{}` | no |
+| <a name="input_browser_recording"></a> [browser\_recording](#input\_browser\_recording) | Optional Browser recording configuration. | `any` | `null` | no |
+| <a name="input_browser_signing_enabled"></a> [browser\_signing\_enabled](#input\_browser\_signing\_enabled) | Whether Browser request signing is enabled. | `bool` | `false` | no |
+| <a name="input_browser_vpc_security_group_ids"></a> [browser\_vpc\_security\_group\_ids](#input\_browser\_vpc\_security\_group\_ids) | Browser security groups for VPC mode. | `set(string)` | `[]` | no |
+| <a name="input_browser_vpc_subnet_ids"></a> [browser\_vpc\_subnet\_ids](#input\_browser\_vpc\_subnet\_ids) | Browser subnets for VPC mode. | `set(string)` | `[]` | no |
 | <a name="input_code_interpreter_certificate_secret_arn"></a> [code\_interpreter\_certificate\_secret\_arn](#input\_code\_interpreter\_certificate\_secret\_arn) | Optional Secrets Manager ARN containing the Code Interpreter certificate. | `string` | `null` | no |
 | <a name="input_code_interpreter_description"></a> [code\_interpreter\_description](#input\_code\_interpreter\_description) | Human-readable description for the AgentCore Code Interpreter. | `string` | `"Managed by terraform-aws-agentcore."` | no |
 | <a name="input_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#input\_code\_interpreter\_execution\_role\_arn) | ARN of an IAM role for the Code Interpreter to assume. Defaults to the runtime execution role managed or supplied through execution\_role\_arn. | `string` | `null` | no |
@@ -213,11 +239,15 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_codebuild_compute_type"></a> [codebuild\_compute\_type](#input\_codebuild\_compute\_type) | Compute type for the CodeBuild environment. See https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html | `string` | `"BUILD_GENERAL1_LARGE"` | no |
 | <a name="input_codebuild_environment_image"></a> [codebuild\_environment\_image](#input\_codebuild\_environment\_image) | Docker image used for the CodeBuild build environment. | `string` | `"aws/codebuild/amazonlinux2-aarch64-standard:3.0"` | no |
 | <a name="input_codebuild_environment_type"></a> [codebuild\_environment\_type](#input\_codebuild\_environment\_type) | CodeBuild environment type. Should match the architecture of codebuild\_environment\_image (e.g. ARM\_CONTAINER for aarch64 images). | `string` | `"ARM_CONTAINER"` | no |
+| <a name="input_create_browser"></a> [create\_browser](#input\_create\_browser) | When true, creates a Browser owned by this module invocation. | `bool` | `false` | no |
 | <a name="input_create_build_pipeline"></a> [create\_build\_pipeline](#input\_create\_build\_pipeline) | When true, creates the CodeBuild build pipeline: ECR repository, S3 source bucket, and CodeBuild project. | `bool` | `false` | no |
 | <a name="input_create_code_interpreter"></a> [create\_code\_interpreter](#input\_create\_code\_interpreter) | When true, creates an AgentCore Code Interpreter alongside the runtime. | `bool` | `false` | no |
+| <a name="input_create_evaluations"></a> [create\_evaluations](#input\_create\_evaluations) | When true, creates Evaluators and online evaluations owned by this invocation. | `bool` | `false` | no |
 | <a name="input_create_execution_role"></a> [create\_execution\_role](#input\_create\_execution\_role) | When true, creates an IAM execution role for AgentCore Runtime and, by default, Code Interpreter. Otherwise provide execution\_role\_arn for resources that require it. | `bool` | `false` | no |
 | <a name="input_create_gateway"></a> [create\_gateway](#input\_create\_gateway) | When true, creates an AgentCore Gateway resource using modules/gateway. Defaults to false. | `bool` | `false` | no |
+| <a name="input_create_gateway_connectors"></a> [create\_gateway\_connectors](#input\_create\_gateway\_connectors) | When true, creates built-in connector targets on this invocation's Gateway. | `bool` | `false` | no |
 | <a name="input_create_memory"></a> [create\_memory](#input\_create\_memory) | When true, creates an AgentCore Memory resource using modules/memory. Defaults to false. | `bool` | `false` | no |
+| <a name="input_create_policy_engine"></a> [create\_policy\_engine](#input\_create\_policy\_engine) | When true, creates the Policy Engine used by this invocation. | `bool` | `false` | no |
 | <a name="input_create_runtime"></a> [create\_runtime](#input\_create\_runtime) | When true, creates the AgentCore Runtime resource. | `bool` | `false` | no |
 | <a name="input_description"></a> [description](#input\_description) | Human-readable description attached to the AgentCore runtime resource. | `string` | `"Managed by terraform-aws-agentcore."` | no |
 | <a name="input_ecr_force_delete"></a> [ecr\_force\_delete](#input\_ecr\_force\_delete) | Allow the ECR repository to be deleted even if it contains images. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
@@ -227,10 +257,12 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | Name of the ECR repository that holds agent container images. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_ecr_scan_on_push"></a> [ecr\_scan\_on\_push](#input\_ecr\_scan\_on\_push) | Enable automatic vulnerability scanning when an image is pushed to the ECR repository. | `bool` | `true` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | Additional environment variables injected into the AgentCore runtime process. AWS\_REGION and AWS\_DEFAULT\_REGION are always set; BEDROCK\_AGENTCORE\_CODE\_INTERPRETER\_ID is also set when create\_code\_interpreter = true. | `map(string)` | `{}` | no |
+| <a name="input_evaluators"></a> [evaluators](#input\_evaluators) | Evaluator definitions accepted by modules/evaluation. | `any` | `{}` | no |
 | <a name="input_execution_role_arn"></a> [execution\_role\_arn](#input\_execution\_role\_arn) | ARN of an existing IAM role to use as the AgentCore runtime execution role. Required when create\_runtime = true and create\_execution\_role = false. | `string` | `null` | no |
 | <a name="input_gateway_attach_runtime_target"></a> [gateway\_attach\_runtime\_target](#input\_gateway\_attach\_runtime\_target) | When true, attach the runtime created by this module call as a Gateway Target under the reserved key runtime. HTTP or MCP is inferred from the Gateway and Runtime protocols. | `bool` | `false` | no |
 | <a name="input_gateway_authorizer_configuration"></a> [gateway\_authorizer\_configuration](#input\_gateway\_authorizer\_configuration) | Advanced JWT authorizer configuration. Required only when gateway\_authorizer\_type is CUSTOM\_JWT. | <pre>object({<br/>    discovery_url            = string<br/>    allowed_audience         = optional(set(string), [])<br/>    allowed_clients          = optional(set(string), [])<br/>    allowed_scopes           = optional(set(string), [])<br/>    workload_identities      = optional(list(string), [])<br/>    hosting_environment_arns = optional(list(string), [])<br/>    custom_claims = optional(set(object({<br/>      inbound_token_claim_name       = string<br/>      inbound_token_claim_value_type = string<br/>      claim_match_operator           = string<br/>      match_value_string             = optional(string)<br/>      match_value_string_list        = optional(set(string))<br/>    })), [])<br/>    private_endpoint = optional(object({<br/>      managed_vpc_resource = optional(object({<br/>        endpoint_ip_address_type = string<br/>        subnet_ids               = set(string)<br/>        vpc_identifier           = string<br/>        routing_domain           = optional(string)<br/>        security_group_ids       = optional(set(string), [])<br/>        tags                     = optional(map(string), {})<br/>      }))<br/>      self_managed_lattice_resource = optional(object({<br/>        resource_configuration_identifier = string<br/>      }))<br/>    }))<br/>    private_endpoint_overrides = optional(list(object({<br/>      domain = string<br/>      private_endpoint = object({<br/>        managed_vpc_resource = optional(object({<br/>          endpoint_ip_address_type = string<br/>          subnet_ids               = set(string)<br/>          vpc_identifier           = string<br/>          routing_domain           = optional(string)<br/>          security_group_ids       = optional(set(string), [])<br/>          tags                     = optional(map(string), {})<br/>        }))<br/>        self_managed_lattice_resource = optional(object({<br/>          resource_configuration_identifier = string<br/>        }))<br/>      })<br/>    })), [])<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_authorizer_type"></a> [gateway\_authorizer\_type](#input\_gateway\_authorizer\_type) | Gateway inbound authorizer: CUSTOM\_JWT, AWS\_IAM, AUTHENTICATE\_ONLY, or NONE. | `string` | `"AWS_IAM"` | no |
+| <a name="input_gateway_connector_targets"></a> [gateway\_connector\_targets](#input\_gateway\_connector\_targets) | Built-in connector targets keyed by caller-defined name. | <pre>map(object({<br/>    name                  = optional(string)<br/>    description           = optional(string)<br/>    connector_id          = string<br/>    connector_version     = string<br/>    configurations        = any<br/>    region                = optional(string)<br/>    log_retention_in_days = optional(number, 30)<br/>    timeouts              = optional(any)<br/>    tags                  = optional(map(string), {})<br/>  }))</pre> | `{}` | no |
 | <a name="input_gateway_create_role"></a> [gateway\_create\_role](#input\_gateway\_create\_role) | When true, the gateway module creates an IAM role. Set to false and supply gateway\_role\_arn to reuse an existing role. | `bool` | `true` | no |
 | <a name="input_gateway_description"></a> [gateway\_description](#input\_gateway\_description) | Human-readable description for the Gateway resource. | `string` | `null` | no |
 | <a name="input_gateway_exception_level"></a> [gateway\_exception\_level](#input\_gateway\_exception\_level) | Exception detail level exposed via the Gateway. AgentCore currently accepts only DEBUG. | `string` | `null` | no |
@@ -238,6 +270,8 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_kms_key_arn"></a> [gateway\_kms\_key\_arn](#input\_gateway\_kms\_key\_arn) | ARN of the KMS key used to encrypt gateway data. When null, AWS-managed encryption is used. | `string` | `null` | no |
 | <a name="input_gateway_name"></a> [gateway\_name](#input\_gateway\_name) | Name for the AgentCore Gateway resource. Defaults to var.name when null. | `string` | `null` | no |
 | <a name="input_gateway_policy_engine_configuration"></a> [gateway\_policy\_engine\_configuration](#input\_gateway\_policy\_engine\_configuration) | Optional Policy Engine association for the Gateway. | <pre>object({<br/>    arn  = string<br/>    mode = string<br/>  })</pre> | `null` | no |
+| <a name="input_gateway_policy_engine_mode"></a> [gateway\_policy\_engine\_mode](#input\_gateway\_policy\_engine\_mode) | When set, attaches the created or supplied Policy Engine to this invocation's Gateway. | `string` | `null` | no |
+| <a name="input_gateway_policy_templates"></a> [gateway\_policy\_templates](#input\_gateway\_policy\_templates) | Cedar policies rendered with this invocation's Gateway ARN as gateway\_arn. | <pre>map(object({<br/>    statement_template = string<br/>    template_values    = optional(map(string), {})<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")<br/>  }))</pre> | `{}` | no |
 | <a name="input_gateway_protocol_configuration"></a> [gateway\_protocol\_configuration](#input\_gateway\_protocol\_configuration) | Optional MCP protocol instructions, versions, session timeout, and response streaming configuration. | <pre>object({<br/>    instructions               = optional(string)<br/>    search_type                = optional(string)<br/>    supported_versions         = optional(set(string), [])<br/>    session_timeout_in_seconds = optional(number)<br/>    enable_response_streaming  = optional(bool)<br/>  })</pre> | `null` | no |
 | <a name="input_gateway_protocol_type"></a> [gateway\_protocol\_type](#input\_gateway\_protocol\_type) | Optional gateway aggregation protocol. Set to "MCP" for MCP aggregation, or null for general HTTP targets such as AgentCore Runtime agents. MCP is inferred when an MCP target is configured. | `string` | `null` | no |
 | <a name="input_gateway_region"></a> [gateway\_region](#input\_gateway\_region) | AWS Region in which to manage the Gateway. Defaults to the provider Region. | `string` | `null` | no |
@@ -250,6 +284,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | Map of general Gateway Targets using the native target\_configuration, credential, metadata, private endpoint, and timeout shapes. | `any` | `{}` | no |
 | <a name="input_gateway_timeouts"></a> [gateway\_timeouts](#input\_gateway\_timeouts) | Optional create, update, and delete timeouts for the Gateway. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_idle_runtime_session_timeout"></a> [idle\_runtime\_session\_timeout](#input\_idle\_runtime\_session\_timeout) | Idle session timeout in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
+| <a name="input_image_digest"></a> [image\_digest](#input\_image\_digest) | Optional sha256 digest used with the ECR repository created by this module. Requires create\_build\_pipeline = true. | `string` | `null` | no |
 | <a name="input_image_tag"></a> [image\_tag](#input\_image\_tag) | Docker image tag to deploy to the AgentCore runtime. Used as the tag appended to the ECR image URI in codebuild mode. Changing this triggers a new CodeBuild run when trigger\_build\_on\_apply = true. | `string` | `"latest"` | no |
 | <a name="input_image_uri"></a> [image\_uri](#input\_image\_uri) | Tagged or digest-pinned Amazon ECR image URI. With an external artifact, set exactly one of image\_uri or runtime\_code\_configuration. | `string` | `null` | no |
 | <a name="input_max_lifetime"></a> [max\_lifetime](#input\_max\_lifetime) | Maximum instance lifetime in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
@@ -264,10 +299,18 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_memory_timeouts"></a> [memory\_timeouts](#input\_memory\_timeouts) | Optional create, update, and delete timeouts for Memory. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_name"></a> [name](#input\_name) | Base name used as a prefix for all resources created by this module (e.g. "my-agent"). Must start with a letter, max 32 characters. | `string` | n/a | yes |
 | <a name="input_network_mode"></a> [network\_mode](#input\_network\_mode) | Network mode for the AgentCore runtime. PUBLIC exposes the runtime endpoint publicly; VPC keeps traffic within your VPC via network\_mode\_config. | `string` | `"PUBLIC"` | no |
+| <a name="input_online_evaluations"></a> [online\_evaluations](#input\_online\_evaluations) | Online evaluations. Set use\_runtime = true to derive the log group and service name from this invocation's Runtime. | `any` | `{}` | no |
+| <a name="input_policy_engine_arn"></a> [policy\_engine\_arn](#input\_policy\_engine\_arn) | Existing Policy Engine ARN attached to the Gateway when create\_policy\_engine is false. | `string` | `null` | no |
+| <a name="input_policy_engine_description"></a> [policy\_engine\_description](#input\_policy\_engine\_description) | Description of the module-created Policy Engine. | `string` | `null` | no |
+| <a name="input_policy_engine_id"></a> [policy\_engine\_id](#input\_policy\_engine\_id) | Existing Policy Engine ID used for policies when create\_policy\_engine is false. | `string` | `null` | no |
+| <a name="input_policy_engine_name"></a> [policy\_engine\_name](#input\_policy\_engine\_name) | Name of the module-created Policy Engine. Defaults to var.name. | `string` | `null` | no |
 | <a name="input_request_header_allowlist"></a> [request\_header\_allowlist](#input\_request\_header\_allowlist) | List of HTTP request headers to pass through to the runtime container. When empty, no additional headers are forwarded. | `list(string)` | `[]` | no |
 | <a name="input_runtime_authorizer_configuration"></a> [runtime\_authorizer\_configuration](#input\_runtime\_authorizer\_configuration) | Optional CUSTOM\_JWT Runtime authorizer with scopes, workload restrictions, custom claims, and private issuer connectivity. | <pre>object({<br/>    discovery_url            = string<br/>    allowed_audience         = optional(set(string), [])<br/>    allowed_clients          = optional(set(string), [])<br/>    allowed_scopes           = optional(set(string), [])<br/>    workload_identities      = optional(list(string), [])<br/>    hosting_environment_arns = optional(list(string), [])<br/>    custom_claims = optional(set(object({<br/>      inbound_token_claim_name       = string<br/>      inbound_token_claim_value_type = string<br/>      claim_match_operator           = string<br/>      match_value_string             = optional(string)<br/>      match_value_string_list        = optional(set(string))<br/>    })), [])<br/>    private_endpoint = optional(object({<br/>      managed_vpc_resource = optional(object({<br/>        endpoint_ip_address_type = string<br/>        subnet_ids               = set(string)<br/>        vpc_identifier           = string<br/>        routing_domain           = optional(string)<br/>        security_group_ids       = optional(set(string), [])<br/>        tags                     = optional(map(string), {})<br/>      }))<br/>      self_managed_lattice_resource = optional(object({<br/>        resource_configuration_identifier = string<br/>      }))<br/>    }))<br/>    private_endpoint_overrides = optional(list(object({<br/>      domain = string<br/>      private_endpoint = object({<br/>        managed_vpc_resource = optional(object({<br/>          endpoint_ip_address_type = string<br/>          subnet_ids               = set(string)<br/>          vpc_identifier           = string<br/>          routing_domain           = optional(string)<br/>          security_group_ids       = optional(set(string), [])<br/>          tags                     = optional(map(string), {})<br/>        }))<br/>        self_managed_lattice_resource = optional(object({<br/>          resource_configuration_identifier = string<br/>        }))<br/>      })<br/>    })), [])<br/>  })</pre> | `null` | no |
+| <a name="input_runtime_browser_access_enabled"></a> [runtime\_browser\_access\_enabled](#input\_runtime\_browser\_access\_enabled) | When true, grants this invocation's Runtime role access to its Browser. | `bool` | `false` | no |
 | <a name="input_runtime_code_configuration"></a> [runtime\_code\_configuration](#input\_runtime\_code\_configuration) | Optional direct Runtime code artifact stored in S3. With an external artifact, set exactly one of this value or image\_uri. | <pre>object({<br/>    entry_point = list(string)<br/>    runtime     = string<br/>    s3 = object({<br/>      bucket     = string<br/>      prefix     = string<br/>      version_id = optional(string)<br/>    })<br/>  })</pre> | `null` | no |
+| <a name="input_runtime_environment_bindings"></a> [runtime\_environment\_bindings](#input\_runtime\_environment\_bindings) | Runtime environment variables resolved from resources in this invocation. Values are memory\_id, browser\_id, or gateway\_url. | `map(string)` | `{}` | no |
 | <a name="input_runtime_filesystems"></a> [runtime\_filesystems](#input\_runtime\_filesystems) | Opt-in Runtime session, S3 Files, or EFS filesystem mounts. | <pre>list(object({<br/>    session_storage = optional(object({<br/>      mount_path = string<br/>    }))<br/>    s3_files_access_point = optional(object({<br/>      access_point_arn = string<br/>      mount_path       = string<br/>    }))<br/>    efs_access_point = optional(object({<br/>      access_point_arn = string<br/>      mount_path       = string<br/>    }))<br/>  }))</pre> | `[]` | no |
+| <a name="input_runtime_memory_access_enabled"></a> [runtime\_memory\_access\_enabled](#input\_runtime\_memory\_access\_enabled) | When true, grants this invocation's Runtime role access to its Memory. | `bool` | `false` | no |
 | <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Override for the AgentCore runtime resource name. Defaults to var.name when null. Hyphens are automatically converted to underscores to satisfy the AgentCore API. | `string` | `null` | no |
 | <a name="input_runtime_region"></a> [runtime\_region](#input\_runtime\_region) | AWS Region in which to manage the Runtime. Defaults to the provider Region. | `string` | `null` | no |
 | <a name="input_runtime_resource_policy_configuration"></a> [runtime\_resource\_policy\_configuration](#input\_runtime\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow\_gateway\_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns          = optional(set(string), [])<br/>    allow_gateway_role = optional(bool, false)<br/>  })</pre> | `null` | no |
@@ -276,6 +319,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
+| <a name="input_temporal_policy_templates"></a> [temporal\_policy\_templates](#input\_temporal\_policy\_templates) | Dogwood policies rendered with this invocation's Gateway ARN as gateway\_arn. | <pre>map(object({<br/>    statement_template = string<br/>    template_values    = optional(map(string), {})<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    enforcement_mode   = optional(string, "LOG_ONLY")<br/>    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")<br/>  }))</pre> | `{}` | no |
 | <a name="input_trigger_build_on_apply"></a> [trigger\_build\_on\_apply](#input\_trigger\_build\_on\_apply) | When true and create\_build\_pipeline = true, starts CodeBuild when source or build configuration changes. Requires bash and AWS CLI v2 on the Terraform executor. | `bool` | `false` | no |
 | <a name="input_vpc_security_group_ids"></a> [vpc\_security\_group\_ids](#input\_vpc\_security\_group\_ids) | Security group IDs attached to the runtime when network\_mode = "VPC". Must be in the same VPC as vpc\_subnet\_ids. | `list(string)` | `[]` | no |
 | <a name="input_vpc_subnet_ids"></a> [vpc\_subnet\_ids](#input\_vpc\_subnet\_ids) | Subnet IDs where the runtime is placed when network\_mode = "VPC". Use private subnets for least-privilege network design. | `list(string)` | `[]` | no |
@@ -291,6 +335,9 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_agent_runtime_network_mode"></a> [agent\_runtime\_network\_mode](#output\_agent\_runtime\_network\_mode) | Network mode of the runtime (PUBLIC or VPC). Null when create\_runtime = false. |
 | <a name="output_agent_runtime_version"></a> [agent\_runtime\_version](#output\_agent\_runtime\_version) | Version identifier of the deployed AgentCore runtime. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_workload_identity_arn"></a> [agent\_runtime\_workload\_identity\_arn](#output\_agent\_runtime\_workload\_identity\_arn) | Workload identity ARN for the runtime. Use this to grant callers permission to obtain workload access tokens. Null when create\_runtime = false. |
+| <a name="output_browser_arn"></a> [browser\_arn](#output\_browser\_arn) | ARN of the Browser, or null when disabled. |
+| <a name="output_browser_id"></a> [browser\_id](#output\_browser\_id) | ID of the Browser, or null when disabled. |
+| <a name="output_browser_profile_ids"></a> [browser\_profile\_ids](#output\_browser\_profile\_ids) | Browser Profile IDs keyed by caller-defined name. |
 | <a name="output_code_interpreter_arn"></a> [code\_interpreter\_arn](#output\_code\_interpreter\_arn) | ARN of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
 | <a name="output_code_interpreter_execution_role_arn"></a> [code\_interpreter\_execution\_role\_arn](#output\_code\_interpreter\_execution\_role\_arn) | ARN of the IAM execution role used by the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
 | <a name="output_code_interpreter_id"></a> [code\_interpreter\_id](#output\_code\_interpreter\_id) | Unique identifier of the AgentCore Code Interpreter. Null when create\_code\_interpreter = false. |
@@ -304,9 +351,11 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_ecr_repository_name"></a> [ecr\_repository\_name](#output\_ecr\_repository\_name) | Name of the ECR repository. Null when create\_build\_pipeline = false. |
 | <a name="output_ecr_repository_url"></a> [ecr\_repository\_url](#output\_ecr\_repository\_url) | Full ECR repository URL (without tag). Null when create\_build\_pipeline = false. |
 | <a name="output_effective_image_uri"></a> [effective\_image\_uri](#output\_effective\_image\_uri) | The container image URI used by the runtime. When create\_build\_pipeline = true this is the ECR repo URL + image\_tag; when create\_build\_pipeline = false this is the caller-supplied image\_uri. |
+| <a name="output_evaluators"></a> [evaluators](#output\_evaluators) | Evaluator IDs and ARNs keyed by caller-defined name. |
 | <a name="output_execution_role_arn"></a> [execution\_role\_arn](#output\_execution\_role\_arn) | ARN of the IAM role used by the AgentCore runtime. Will equal var.execution\_role\_arn when create\_execution\_role = false. |
 | <a name="output_execution_role_name"></a> [execution\_role\_name](#output\_execution\_role\_name) | Name of the module-created execution role. Null when create\_execution\_role is false. |
 | <a name="output_gateway_arn"></a> [gateway\_arn](#output\_gateway\_arn) | ARN of the AgentCore Gateway. Null when create\_gateway = false. |
+| <a name="output_gateway_connector_targets"></a> [gateway\_connector\_targets](#output\_gateway\_connector\_targets) | Built-in connector target IDs keyed by caller-defined name. |
 | <a name="output_gateway_id"></a> [gateway\_id](#output\_gateway\_id) | Unique identifier of the AgentCore Gateway. Null when create\_gateway = false. |
 | <a name="output_gateway_protocol_type"></a> [gateway\_protocol\_type](#output\_gateway\_protocol\_type) | Effective Gateway aggregation protocol. MCP for aggregation gateways, null for general HTTP gateways or when create\_gateway = false. |
 | <a name="output_gateway_role_arn"></a> [gateway\_role\_arn](#output\_gateway\_role\_arn) | ARN of the IAM role used by the gateway. Null when create\_gateway = false. |
@@ -319,6 +368,10 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="output_memory_arn"></a> [memory\_arn](#output\_memory\_arn) | ARN of the AgentCore Memory resource. Null when create\_memory = false. |
 | <a name="output_memory_id"></a> [memory\_id](#output\_memory\_id) | Unique identifier of the AgentCore Memory resource. Null when create\_memory = false. |
 | <a name="output_memory_name"></a> [memory\_name](#output\_memory\_name) | Name of the AgentCore Memory resource. Null when create\_memory = false. |
+| <a name="output_online_evaluations"></a> [online\_evaluations](#output\_online\_evaluations) | Online evaluation IDs and ARNs keyed by caller-defined name. |
+| <a name="output_policy_arns"></a> [policy\_arns](#output\_policy\_arns) | Cedar and Dogwood policy ARNs keyed by caller-defined name. |
+| <a name="output_policy_engine_arn"></a> [policy\_engine\_arn](#output\_policy\_engine\_arn) | ARN of the Policy Engine created or supplied to this invocation. |
+| <a name="output_policy_engine_id"></a> [policy\_engine\_id](#output\_policy\_engine\_id) | ID of the Policy Engine created or supplied to this invocation. |
 | <a name="output_resource_policies"></a> [resource\_policies](#output\_resource\_policies) | Resource policies attached to the Runtime and Gateway created by this module call. |
 | <a name="output_source_bucket_arn"></a> [source\_bucket\_arn](#output\_source\_bucket\_arn) | ARN of the S3 source bucket. Null when create\_build\_pipeline = false. |
 | <a name="output_source_bucket_name"></a> [source\_bucket\_name](#output\_source\_bucket\_name) | Name of the S3 bucket holding the agent source code archive. Null when create\_build\_pipeline = false. |
