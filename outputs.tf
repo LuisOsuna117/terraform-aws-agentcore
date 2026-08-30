@@ -240,3 +240,62 @@ output "resource_policies" {
   description = "Resource policies attached to the Runtime and Gateway created by this module call."
   value       = length(module.resource_policy) == 0 ? {} : module.resource_policy[0].resource_policies
 }
+
+# ==============================================================================
+# Opt-in services
+# ==============================================================================
+
+output "policy_engine_id" {
+  description = "ID of the Policy Engine created or supplied to this invocation."
+  value       = local.effective_policy_engine_id
+}
+
+output "policy_engine_arn" {
+  description = "ARN of the Policy Engine created or supplied to this invocation."
+  value       = local.effective_policy_engine_arn
+}
+
+output "policy_arns" {
+  description = "Cedar and Dogwood policy ARNs keyed by caller-defined name."
+  value = merge(
+    length(module.gateway_policies) == 0 ? {} : module.gateway_policies[0].policy_arns,
+    { for key, stack in aws_cloudformation_stack.temporal_policy : key => stack.outputs["PolicyArn"] },
+  )
+}
+
+output "browser_id" {
+  description = "ID of the Browser, or null when disabled."
+  value       = var.create_browser ? module.browser[0].browser_id : null
+}
+
+output "browser_arn" {
+  description = "ARN of the Browser, or null when disabled."
+  value       = var.create_browser ? module.browser[0].browser_arn : null
+}
+
+output "browser_profile_ids" {
+  description = "Browser Profile IDs keyed by caller-defined name."
+  value       = var.create_browser ? module.browser[0].profile_ids : {}
+}
+
+output "evaluators" {
+  description = "Evaluator IDs and ARNs keyed by caller-defined name."
+  value       = var.create_evaluations ? module.evaluation[0].evaluators : {}
+}
+
+output "online_evaluations" {
+  description = "Online evaluation IDs and ARNs keyed by caller-defined name."
+  value       = var.create_evaluations ? module.evaluation[0].online_evaluations : {}
+}
+
+output "gateway_connector_targets" {
+  description = "Built-in connector target IDs keyed by caller-defined name."
+  value = {
+    for key, target in module.gateway_connector_target : key => {
+      id                = target.target_id
+      gateway_arn       = target.gateway_arn
+      connector_id      = target.connector_id
+      connector_version = target.connector_version
+    }
+  }
+}
