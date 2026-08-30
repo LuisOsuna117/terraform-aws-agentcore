@@ -37,9 +37,11 @@ locals {
   ]
 
   # The container image URI used by the runtime.
-  # create_build_pipeline = true  → ECR repo URL + image_tag from module.build
+  # create_build_pipeline = true  → module ECR plus an optional immutable digest
   # create_build_pipeline = false → caller-supplied image_uri (BYO)
-  effective_image_uri = var.create_build_pipeline ? module.build[0].image_uri : var.image_uri
+  effective_image_uri = var.create_build_pipeline ? (
+    var.image_digest == null ? module.build[0].image_uri : "${module.build[0].ecr_repository_url}@${var.image_digest}"
+  ) : var.image_uri
 
   effective_runtime_authorizer_configuration = var.runtime_authorizer_configuration == null ? null : {
     discovery_url              = var.runtime_authorizer_configuration.discovery_url
@@ -191,6 +193,68 @@ locals {
   )
 }
 
+locals {
+  effective_policy_engine_id  = var.create_policy_engine ? module.policy_engine[0].policy_engine_id : var.policy_engine_id
+  effective_policy_engine_arn = var.create_policy_engine ? module.policy_engine[0].policy_engine_arn : var.policy_engine_arn
+
+  effective_gateway_policy_engine_configuration = var.gateway_policy_engine_mode == null ? var.gateway_policy_engine_configuration : {
+    arn  = local.effective_policy_engine_arn
+    mode = var.gateway_policy_engine_mode
+  }
+
+  runtime_environment_binding_values = {
+    for name, source in var.runtime_environment_bindings : name => (
+      source == "memory_id" ? module.memory[0].memory_id :
+      module.browser[0].browser_id
+    )
+  }
+
+  rendered_gateway_policies = {
+    for key, policy in var.gateway_policy_templates : key => {
+      name        = policy.name
+      description = policy.description
+      cedar_statement = templatestring(policy.statement_template, merge(policy.template_values, {
+        gateway_arn = module.gateway[0].gateway_arn
+      }))
+      validation_mode = policy.validation_mode
+    }
+  }
+
+  rendered_temporal_policies = {
+    for key, policy in var.temporal_policy_templates : key => {
+      name        = policy.name
+      description = policy.description
+      statement = templatestring(policy.statement_template, merge(policy.template_values, {
+        gateway_arn = module.gateway[0].gateway_arn
+      }))
+      enforcement_mode = policy.enforcement_mode
+      validation_mode  = policy.validation_mode
+    }
+  }
+
+  effective_online_evaluations = {
+    for key, evaluation in var.online_evaluations : key => {
+      name               = try(evaluation.name, null)
+      description        = try(evaluation.description, null)
+      execution_role_arn = evaluation.execution_role_arn
+      evaluator_keys     = try(toset(evaluation.evaluator_keys), toset([]))
+      evaluator_ids      = try(toset(evaluation.evaluator_ids), toset([]))
+      log_group_names = try(evaluation.use_runtime, false) ? toset([
+        "/aws/bedrock-agentcore/runtimes/${module.runtime[0].agent_runtime_id}-DEFAULT"
+      ]) : try(toset(evaluation.log_group_names), toset([]))
+      service_names = try(evaluation.use_runtime, false) ? toset([
+        "${module.runtime[0].agent_runtime_name}.DEFAULT"
+      ]) : try(toset(evaluation.service_names), toset([]))
+      sampling_percentage     = evaluation.sampling_percentage
+      session_timeout_minutes = evaluation.session_timeout_minutes
+      enable_on_create        = try(evaluation.enable_on_create, true)
+      region                  = try(evaluation.region, null)
+      filters                 = try(evaluation.filters, [])
+      timeouts                = try(evaluation.timeouts, null)
+    }
+  }
+}
+
 # ==============================================================================
 # Cross-variable Validations
 # (terraform_data is a built-in resource — no external provider required)
@@ -208,7 +272,12 @@ resource "terraform_data" "validations" {
 
     precondition {
       condition     = !var.create_build_pipeline || (var.image_uri == null && var.runtime_code_configuration == null)
-      error_message = "image_uri and runtime_code_configuration must be null when create_build_pipeline is true."
+      error_message = "image_uri and runtime_code_configuration must be null when create_build_pipeline is true; use image_digest for immutable deployment from the module repository."
+    }
+
+    precondition {
+      condition     = var.create_build_pipeline || var.image_digest == null
+      error_message = "image_digest requires create_build_pipeline = true."
     }
 
     precondition {
@@ -288,6 +357,58 @@ resource "terraform_data" "validations" {
         try(var.gateway_runtime_target.credential_provider_configuration.jwt_passthrough, false)
       )
       error_message = "runtime_trust_gateway_workload_identity requires a module-created Runtime and Gateway, an attached Runtime target using JWT passthrough, and runtime_authorizer_configuration."
+    }
+
+    precondition {
+      condition     = !var.create_policy_engine || (var.policy_engine_id == null && var.policy_engine_arn == null)
+      error_message = "policy_engine_id and policy_engine_arn must be null when create_policy_engine = true."
+    }
+
+    precondition {
+      condition     = length(var.gateway_policy_templates) == 0 && length(var.temporal_policy_templates) == 0 || (var.create_gateway && local.effective_policy_engine_id != null)
+      error_message = "Policy templates require a Gateway and a created or supplied Policy Engine ID."
+    }
+
+    precondition {
+      condition     = var.gateway_policy_engine_mode == null || (var.create_gateway && local.effective_policy_engine_arn != null)
+      error_message = "gateway_policy_engine_mode requires a Gateway and a created or supplied Policy Engine ARN."
+    }
+
+    precondition {
+      condition     = length(setintersection(toset(keys(var.gateway_policy_templates)), toset(keys(var.temporal_policy_templates)))) == 0
+      error_message = "Cedar and Dogwood policy maps must use distinct keys."
+    }
+
+    precondition {
+      condition = alltrue([
+        for source in values(var.runtime_environment_bindings) :
+        source == "memory_id" ? var.create_memory :
+        var.create_browser
+      ])
+      error_message = "Each Runtime environment binding must reference a resource enabled by this invocation."
+    }
+
+    precondition {
+      condition     = !var.runtime_memory_access_enabled || (var.create_runtime && var.create_execution_role && var.create_memory)
+      error_message = "runtime_memory_access_enabled requires a module-created Runtime role and Memory."
+    }
+
+    precondition {
+      condition     = !var.runtime_browser_access_enabled || (var.create_runtime && var.create_execution_role && var.create_browser)
+      error_message = "runtime_browser_access_enabled requires a module-created Runtime role and Browser."
+    }
+
+    precondition {
+      condition = alltrue([
+        for evaluation in values(var.online_evaluations) :
+        !try(evaluation.use_runtime, false) || var.create_runtime
+      ])
+      error_message = "An online evaluation with use_runtime = true requires create_runtime = true."
+    }
+
+    precondition {
+      condition     = !var.create_gateway_connectors || var.create_gateway
+      error_message = "create_gateway_connectors requires create_gateway = true."
     }
 
   }
@@ -374,6 +495,7 @@ module "runtime" {
       BEDROCK_AGENTCORE_CODE_INTERPRETER_ID = module.code_interpreter[0].code_interpreter_id
     } : {},
     var.environment_variables,
+    local.runtime_environment_binding_values,
   )
 
   tags = local.common_tags
@@ -454,7 +576,7 @@ module "gateway" {
   authorizer_configuration    = var.gateway_authorizer_configuration
   protocol_type               = local.effective_gateway_protocol_type
   protocol_configuration      = var.gateway_protocol_configuration
-  policy_engine_configuration = var.gateway_policy_engine_configuration
+  policy_engine_configuration = local.effective_gateway_policy_engine_configuration
   interceptor_configurations  = var.gateway_interceptor_configurations
   targets                     = var.gateway_targets
   runtime_invoke_arns         = var.gateway_runtime_invoke_arns
@@ -524,6 +646,110 @@ module "resource_policy" {
   name                 = var.name
   create_policy_engine = false
   resource_policies    = local.root_resource_policies
+}
+
+# ==============================================================================
+# Opt-in services owned by this module invocation
+# ==============================================================================
+
+module "policy_engine" {
+  count  = var.create_policy_engine ? 1 : 0
+  source = "./modules/policy"
+
+  name                 = coalesce(var.policy_engine_name, var.name)
+  create_policy_engine = true
+  description          = var.policy_engine_description
+  policies             = {}
+  tags                 = local.common_tags
+}
+
+module "gateway_policies" {
+  count  = length(local.rendered_gateway_policies) > 0 ? 1 : 0
+  source = "./modules/policy"
+
+  name                 = coalesce(var.policy_engine_name, var.name)
+  create_policy_engine = false
+  policy_engine_id     = local.effective_policy_engine_id
+  policies             = local.rendered_gateway_policies
+  tags                 = local.common_tags
+}
+
+resource "aws_cloudformation_stack" "temporal_policy" {
+  for_each = local.rendered_temporal_policies
+
+  name = "agentcore-policy-${substr(sha1("${local.effective_policy_engine_id}:${each.key}"), 0, 12)}"
+  template_body = jsonencode({
+    AWSTemplateFormatVersion = "2010-09-09"
+    Resources = {
+      Policy = {
+        Type = "AWS::BedrockAgentCore::Policy"
+        Properties = {
+          Name            = replace(coalesce(each.value.name, each.key), "-", "_")
+          Description     = each.value.description
+          PolicyEngineId  = local.effective_policy_engine_id
+          EnforcementMode = each.value.enforcement_mode
+          ValidationMode  = each.value.validation_mode
+          Definition = {
+            Policy = {
+              Statement = each.value.statement
+            }
+          }
+        }
+      }
+    }
+    Outputs = {
+      PolicyArn = {
+        Value = { "Fn::GetAtt" = ["Policy", "PolicyArn"] }
+      }
+    }
+  })
+
+  tags = local.common_tags
+}
+
+module "browser" {
+  count  = var.create_browser ? 1 : 0
+  source = "./modules/browser"
+
+  name                    = coalesce(var.browser_name, var.name)
+  create_browser          = true
+  description             = var.browser_description
+  execution_role_arn      = var.browser_execution_role_arn
+  network_mode            = var.browser_network_mode
+  vpc_security_group_ids  = var.browser_vpc_security_group_ids
+  vpc_subnet_ids          = var.browser_vpc_subnet_ids
+  browser_signing_enabled = var.browser_signing_enabled
+  recording               = var.browser_recording
+  certificate_secret_arn  = var.browser_certificate_secret_arn
+  enterprise_policy       = var.browser_enterprise_policy
+  profiles                = var.browser_profiles
+  tags                    = local.common_tags
+}
+
+module "evaluation" {
+  count  = var.create_evaluations ? 1 : 0
+  source = "./modules/evaluation"
+
+  name               = var.name
+  evaluators         = var.evaluators
+  online_evaluations = local.effective_online_evaluations
+  tags               = local.common_tags
+}
+
+module "gateway_connector_target" {
+  for_each = var.create_gateway_connectors ? var.gateway_connector_targets : {}
+  source   = "./modules/gateway-connector-target"
+
+  gateway_identifier    = module.gateway[0].gateway_id
+  name                  = coalesce(each.value.name, each.key)
+  description           = each.value.description
+  connector_id          = each.value.connector_id
+  connector_version     = each.value.connector_version
+  configurations        = each.value.configurations
+  region                = each.value.region
+  log_retention_in_days = each.value.log_retention_in_days
+  timeouts              = each.value.timeouts
+  tags                  = merge(local.common_tags, each.value.tags)
 }
 
 # ==============================================================================
@@ -710,6 +936,23 @@ resource "aws_iam_role_policy" "agent_execution" {
           Resource = local.workload_identity_resource_arns
         },
       ],
+      var.runtime_memory_access_enabled ? [{
+        Sid      = "AgentCoreMemoryRead"
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:RetrieveMemoryRecords"]
+        Resource = module.memory[0].memory_arn
+      }] : [],
+      var.runtime_browser_access_enabled ? [{
+        Sid    = "AgentCoreBrowserSessions"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:StartBrowserSession",
+          "bedrock-agentcore:GetBrowserSession",
+          "bedrock-agentcore:StopBrowserSession",
+          "bedrock-agentcore:ConnectBrowserAutomationStream",
+        ]
+        Resource = module.browser[0].browser_arn
+      }] : [],
       # Caller-supplied statements merged last so they can override defaults.
       var.additional_iam_statements,
     )

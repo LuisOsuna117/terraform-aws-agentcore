@@ -85,6 +85,17 @@ variable "image_uri" {
   }
 }
 
+variable "image_digest" {
+  description = "Optional sha256 digest used with the ECR repository created by this module. Requires create_build_pipeline = true."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.image_digest == null || can(regex("^sha256:[a-f0-9]{64}$", var.image_digest))
+    error_message = "image_digest must be null or a sha256 digest."
+  }
+}
+
 variable "runtime_code_configuration" {
   description = "Optional direct Runtime code artifact stored in S3. With an external artifact, set exactly one of this value or image_uri."
   type = object({
@@ -882,4 +893,236 @@ variable "gateway_timeouts" {
     delete = optional(string)
   })
   default = null
+}
+
+# ==============================================================================
+# Opt-in services owned by this module invocation
+# ==============================================================================
+
+variable "create_policy_engine" {
+  description = "When true, creates the Policy Engine used by this invocation."
+  type        = bool
+  default     = false
+}
+
+variable "policy_engine_id" {
+  description = "Existing Policy Engine ID used for policies when create_policy_engine is false."
+  type        = string
+  default     = null
+}
+
+variable "policy_engine_arn" {
+  description = "Existing Policy Engine ARN attached to the Gateway when create_policy_engine is false."
+  type        = string
+  default     = null
+}
+
+variable "policy_engine_name" {
+  description = "Name of the module-created Policy Engine. Defaults to var.name."
+  type        = string
+  default     = null
+}
+
+variable "policy_engine_description" {
+  description = "Description of the module-created Policy Engine."
+  type        = string
+  default     = null
+}
+
+variable "gateway_policy_engine_mode" {
+  description = "When set, attaches the created or supplied Policy Engine to this invocation's Gateway."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.gateway_policy_engine_mode == null ? true : contains(["LOG_ONLY", "ENFORCE"], var.gateway_policy_engine_mode)
+    error_message = "gateway_policy_engine_mode must be LOG_ONLY, ENFORCE, or null."
+  }
+}
+
+variable "gateway_policy_templates" {
+  description = "Cedar policies rendered with this invocation's Gateway ARN as gateway_arn."
+  type = map(object({
+    statement_template = string
+    template_values    = optional(map(string), {})
+    name               = optional(string)
+    description        = optional(string)
+    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for policy in values(var.gateway_policy_templates) :
+      contains(["FAIL_ON_ANY_FINDINGS", "IGNORE_ALL_FINDINGS"], policy.validation_mode)
+    ])
+    error_message = "Each Cedar policy validation_mode must be FAIL_ON_ANY_FINDINGS or IGNORE_ALL_FINDINGS."
+  }
+}
+
+variable "temporal_policy_templates" {
+  description = "Dogwood policies rendered with this invocation's Gateway ARN as gateway_arn."
+  type = map(object({
+    statement_template = string
+    template_values    = optional(map(string), {})
+    name               = optional(string)
+    description        = optional(string)
+    enforcement_mode   = optional(string, "LOG_ONLY")
+    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for policy in values(var.temporal_policy_templates) :
+      contains(["LOG_ONLY", "ACTIVE"], policy.enforcement_mode)
+    ])
+    error_message = "Each Dogwood policy enforcement_mode must be LOG_ONLY or ACTIVE."
+  }
+
+  validation {
+    condition = alltrue([
+      for policy in values(var.temporal_policy_templates) :
+      contains(["FAIL_ON_ANY_FINDINGS", "IGNORE_ALL_FINDINGS"], policy.validation_mode)
+    ])
+    error_message = "Each Dogwood policy validation_mode must be FAIL_ON_ANY_FINDINGS or IGNORE_ALL_FINDINGS."
+  }
+}
+
+variable "create_browser" {
+  description = "When true, creates a Browser owned by this module invocation."
+  type        = bool
+  default     = false
+}
+
+variable "browser_name" {
+  description = "Name of the Browser. Defaults to var.name."
+  type        = string
+  default     = null
+}
+
+variable "browser_description" {
+  description = "Description of the Browser."
+  type        = string
+  default     = null
+}
+
+variable "browser_execution_role_arn" {
+  description = "Optional Browser execution role ARN."
+  type        = string
+  default     = null
+}
+
+variable "browser_network_mode" {
+  description = "Browser network mode: PUBLIC or VPC."
+  type        = string
+  default     = "PUBLIC"
+}
+
+variable "browser_vpc_security_group_ids" {
+  description = "Browser security groups for VPC mode."
+  type        = set(string)
+  default     = []
+}
+
+variable "browser_vpc_subnet_ids" {
+  description = "Browser subnets for VPC mode."
+  type        = set(string)
+  default     = []
+}
+
+variable "browser_signing_enabled" {
+  description = "Whether Browser request signing is enabled."
+  type        = bool
+  default     = false
+}
+
+variable "browser_recording" {
+  description = "Optional Browser recording configuration."
+  type        = any
+  default     = null
+}
+
+variable "browser_certificate_secret_arn" {
+  description = "Optional Browser certificate secret ARN."
+  type        = string
+  default     = null
+}
+
+variable "browser_enterprise_policy" {
+  description = "Optional Browser enterprise policy."
+  type        = any
+  default     = null
+}
+
+variable "browser_profiles" {
+  description = "Browser Profiles keyed by caller-defined name."
+  type        = any
+  default     = {}
+}
+
+variable "runtime_environment_bindings" {
+  description = "Runtime environment variables resolved from resources in this invocation. Values are memory_id or browser_id."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for source in values(var.runtime_environment_bindings) :
+      contains(["memory_id", "browser_id"], source)
+    ])
+    error_message = "runtime_environment_bindings values must be memory_id or browser_id."
+  }
+}
+
+variable "runtime_memory_access_enabled" {
+  description = "When true, grants this invocation's Runtime role access to its Memory."
+  type        = bool
+  default     = false
+}
+
+variable "runtime_browser_access_enabled" {
+  description = "When true, grants this invocation's Runtime role access to its Browser."
+  type        = bool
+  default     = false
+}
+
+variable "create_evaluations" {
+  description = "When true, creates Evaluators and online evaluations owned by this invocation."
+  type        = bool
+  default     = false
+}
+
+variable "evaluators" {
+  description = "Evaluator definitions accepted by modules/evaluation."
+  type        = any
+  default     = {}
+}
+
+variable "online_evaluations" {
+  description = "Online evaluations. Set use_runtime = true to derive the log group and service name from this invocation's Runtime."
+  type        = any
+  default     = {}
+}
+
+variable "create_gateway_connectors" {
+  description = "When true, creates built-in connector targets on this invocation's Gateway."
+  type        = bool
+  default     = false
+}
+
+variable "gateway_connector_targets" {
+  description = "Built-in connector targets keyed by caller-defined name."
+  type = map(object({
+    name                  = optional(string)
+    description           = optional(string)
+    connector_id          = string
+    connector_version     = string
+    configurations        = any
+    region                = optional(string)
+    log_retention_in_days = optional(number, 30)
+    timeouts              = optional(any)
+    tags                  = optional(map(string), {})
+  }))
+  default = {}
 }
