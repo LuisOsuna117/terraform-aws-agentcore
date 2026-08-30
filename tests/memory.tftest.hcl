@@ -28,7 +28,10 @@ run "memory_supports_indexes_and_kinesis_delivery" {
   }
 
   assert {
-    condition     = aws_bedrockagentcore_memory.this.indexed_key[0].key == "tenant_id"
+    condition = contains([
+      for indexed_key in aws_bedrockagentcore_memory.this.indexed_key :
+      "${indexed_key.key}:${indexed_key.type}"
+    ], "tenant_id:STRING")
     error_message = "Memory must preserve indexed keys."
   }
 
