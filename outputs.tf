@@ -261,13 +261,23 @@ output "additional_gateways" {
   description = "Additional enabled Gateway instances keyed by caller-defined name."
   value = {
     for key, gateway in module.additional_gateway : key => {
-      id                     = gateway.gateway_id
-      arn                    = gateway.gateway_arn
-      url                    = gateway.gateway_url
-      role_arn               = gateway.role_arn
-      target_ids             = gateway.gateway_target_ids
-      target_invocation_urls = gateway.gateway_target_invocation_urls
-      runtime_target_id      = try(module.additional_gateway_runtime_target[key].target_id, null)
+      id       = gateway.gateway_id
+      arn      = gateway.gateway_arn
+      url      = gateway.gateway_url
+      role_arn = gateway.role_arn
+      target_ids = merge(
+        gateway.gateway_target_ids,
+        local.enabled_additional_gateways[key].runtime_key == null ? {} : {
+          runtime = module.additional_gateway_runtime_target[key].target_id
+        },
+      )
+      target_invocation_urls = merge(
+        gateway.gateway_target_invocation_urls,
+        local.enabled_additional_gateways[key].runtime_key == null ? {} : {
+          runtime = "${trimsuffix(gateway.gateway_url, "/")}/${coalesce(try(local.enabled_additional_gateways[key].runtime_target.name, null), "runtime")}/invocations"
+        },
+      )
+      runtime_target_id = try(module.additional_gateway_runtime_target[key].target_id, null)
     }
   }
 }

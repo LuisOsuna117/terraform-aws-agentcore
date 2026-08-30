@@ -166,7 +166,8 @@ run "one_instance_composes_only_enabled_agentcore_capabilities" {
     condition = (
       contains(keys(output.resource_policies), "gateway_automation") &&
       contains(keys(output.resource_policies), "runtime_signal") &&
-      output.additional_gateways["automation"].runtime_target_id != null
+      output.additional_gateways["automation"].runtime_target_id != null &&
+      endswith(output.additional_gateways["automation"].target_invocation_urls["runtime"], "/runtime/invocations")
     )
     error_message = "Composed Gateway/Runtime trust and attached targets must be managed in the same root instance."
   }
