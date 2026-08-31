@@ -33,7 +33,7 @@ output "agent_runtime_workload_identity_arn" {
 }
 
 output "agent_runtime_allowed_workload_identities" {
-  description = "CUSTOM_JWT workload identities allowed to invoke the Runtime, including the module-created Gateway identity when opted in."
+  description = "CUSTOM_JWT workload identity names allowed to invoke the Runtime, including the module-created Gateway identity name when opted in."
   value = local.effective_runtime_authorizer_configuration == null ? [] : try(
     local.effective_runtime_authorizer_configuration.workload_identities,
     [],

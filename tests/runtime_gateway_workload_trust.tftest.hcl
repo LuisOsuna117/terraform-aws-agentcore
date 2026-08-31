@@ -41,7 +41,7 @@ run "jwt_runtime_trusts_only_configured_and_gateway_workloads" {
       discovery_url   = "https://example.auth.us-east-1.amazoncognito.com/.well-known/openid-configuration"
       allowed_clients = ["portal"]
       workload_identities = [
-        "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/reviewed"
+        "reviewed"
       ]
     }
 
@@ -55,8 +55,8 @@ run "jwt_runtime_trusts_only_configured_and_gateway_workloads" {
 
   assert {
     condition = output.agent_runtime_allowed_workload_identities == tolist([
-      "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/reviewed",
-      "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/operator-gateway",
+      "reviewed",
+      "operator-gateway",
     ])
     error_message = "The Runtime must retain caller workloads and add the module-created Gateway workload identity."
   }

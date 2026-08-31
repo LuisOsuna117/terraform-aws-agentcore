@@ -58,7 +58,7 @@ locals {
     private_endpoint_overrides = var.runtime_authorizer_configuration.private_endpoint_overrides
     workload_identities = var.runtime_trust_gateway_workload_identity ? distinct(concat(
       var.runtime_authorizer_configuration.workload_identities,
-      [module.gateway[0].workload_identity_arn],
+      [element(reverse(split("/", module.gateway[0].workload_identity_arn)), 0)],
     )) : var.runtime_authorizer_configuration.workload_identities
   }
 

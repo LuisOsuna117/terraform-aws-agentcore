@@ -202,6 +202,17 @@ variable "runtime_authorizer_configuration" {
     })), [])
   })
   default = null
+
+  validation {
+    condition = var.runtime_authorizer_configuration == null || (
+      length(var.runtime_authorizer_configuration.workload_identities) <= 10 &&
+      alltrue([
+        for identity in var.runtime_authorizer_configuration.workload_identities :
+        can(regex("^[A-Za-z0-9_.-]{3,255}$", identity))
+      ])
+    )
+    error_message = "runtime_authorizer_configuration.workload_identities must contain at most 10 workload identity names, not ARNs."
+  }
 }
 
 variable "runtime_trust_gateway_workload_identity" {

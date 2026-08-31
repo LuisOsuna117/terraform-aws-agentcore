@@ -329,7 +329,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Description |
 |------|-------------|
-| <a name="output_agent_runtime_allowed_workload_identities"></a> [agent\_runtime\_allowed\_workload\_identities](#output\_agent\_runtime\_allowed\_workload\_identities) | CUSTOM\_JWT workload identities allowed to invoke the Runtime, including the module-created Gateway identity when opted in. |
+| <a name="output_agent_runtime_allowed_workload_identities"></a> [agent\_runtime\_allowed\_workload\_identities](#output\_agent\_runtime\_allowed\_workload\_identities) | CUSTOM\_JWT workload identity names allowed to invoke the Runtime, including the module-created Gateway identity name when opted in. |
 | <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. Null when create\_runtime = false. |
