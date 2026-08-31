@@ -119,6 +119,14 @@ run "one_runtime_composes_only_its_opt_in_services" {
   }
 
   assert {
+    condition = !contains(
+      keys(jsondecode(aws_cloudformation_stack.temporal_policy["bounded"].template_body).Resources.Policy.Properties),
+      "Description",
+    )
+    error_message = "An omitted temporal policy description must not render as a null CloudFormation property."
+  }
+
+  assert {
     condition     = contains(keys(output.online_evaluations), "runtime")
     error_message = "Online evaluations must support the Runtime created by this invocation."
   }

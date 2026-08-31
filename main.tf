@@ -745,9 +745,8 @@ resource "aws_cloudformation_stack" "temporal_policy" {
     Resources = {
       Policy = {
         Type = "AWS::BedrockAgentCore::Policy"
-        Properties = {
+        Properties = merge({
           Name            = replace(coalesce(each.value.name, each.key), "-", "_")
-          Description     = each.value.description
           PolicyEngineId  = local.effective_policy_engine_id
           EnforcementMode = each.value.enforcement_mode
           ValidationMode  = each.value.validation_mode
@@ -756,7 +755,9 @@ resource "aws_cloudformation_stack" "temporal_policy" {
               Statement = each.value.statement
             }
           }
-        }
+          }, each.value.description == null ? {} : {
+          Description = each.value.description
+        })
       }
     }
     Outputs = {
