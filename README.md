@@ -219,7 +219,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_browser_certificate_secret_arn"></a> [browser\_certificate\_secret\_arn](#input\_browser\_certificate\_secret\_arn) | Optional Browser certificate secret ARN. | `string` | `null` | no |
 | <a name="input_browser_description"></a> [browser\_description](#input\_browser\_description) | Description of the Browser. | `string` | `null` | no |
 | <a name="input_browser_enterprise_policy"></a> [browser\_enterprise\_policy](#input\_browser\_enterprise\_policy) | Optional Browser enterprise policy. | `any` | `null` | no |
-| <a name="input_browser_execution_role_arn"></a> [browser\_execution\_role\_arn](#input\_browser\_execution\_role\_arn) | Optional Browser execution role ARN. | `string` | `null` | no |
+| <a name="input_browser_execution_role_arn"></a> [browser\_execution\_role\_arn](#input\_browser\_execution\_role\_arn) | Optional Browser execution role ARN. Defaults to the runtime execution role managed or supplied through execution\_role\_arn. | `string` | `null` | no |
 | <a name="input_browser_name"></a> [browser\_name](#input\_browser\_name) | Name of the Browser. Defaults to var.name. | `string` | `null` | no |
 | <a name="input_browser_network_mode"></a> [browser\_network\_mode](#input\_browser\_network\_mode) | Browser network mode: PUBLIC or VPC. | `string` | `"PUBLIC"` | no |
 | <a name="input_browser_profiles"></a> [browser\_profiles](#input\_browser\_profiles) | Browser Profiles keyed by caller-defined name. | `any` | `{}` | no |

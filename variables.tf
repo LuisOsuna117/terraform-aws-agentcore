@@ -1025,7 +1025,7 @@ variable "browser_description" {
 }
 
 variable "browser_execution_role_arn" {
-  description = "Optional Browser execution role ARN."
+  description = "Optional Browser execution role ARN. Defaults to the runtime execution role managed or supplied through execution_role_arn."
   type        = string
   default     = null
 }

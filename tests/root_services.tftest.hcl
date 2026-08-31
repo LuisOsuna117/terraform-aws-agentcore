@@ -54,6 +54,7 @@ run "one_runtime_composes_only_its_opt_in_services" {
     create_gateway            = true
     create_memory             = true
     create_browser            = true
+    browser_signing_enabled   = true
     create_policy_engine      = true
     create_evaluations        = true
     create_gateway_connectors = true

@@ -22,6 +22,10 @@ locals {
   # Code Interpreter execution role for least-privilege deployments.
   code_interpreter_execution_role_arn = var.code_interpreter_execution_role_arn != null ? var.code_interpreter_execution_role_arn : local.execution_role_arn
 
+  # A signed Browser also needs an execution role. Reuse this module
+  # invocation's runtime role unless the caller supplies a dedicated role.
+  browser_execution_role_arn = var.browser_execution_role_arn != null ? var.browser_execution_role_arn : local.execution_role_arn
+
   # Tags applied to every taggable resource.
   common_tags = merge(
     {
@@ -778,7 +782,7 @@ module "browser" {
   name                    = coalesce(var.browser_name, var.name)
   create_browser          = true
   description             = var.browser_description
-  execution_role_arn      = var.browser_execution_role_arn
+  execution_role_arn      = local.browser_execution_role_arn
   network_mode            = var.browser_network_mode
   vpc_security_group_ids  = var.browser_vpc_security_group_ids
   vpc_subnet_ids          = var.browser_vpc_subnet_ids
