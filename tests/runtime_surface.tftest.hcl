@@ -87,3 +87,29 @@ run "runtime_supports_advanced_jwt_authorizer" {
     error_message = "Runtime must preserve STRING_ARRAY claims."
   }
 }
+
+run "runtime_omits_unconfigured_jwt_claim_restrictions" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    runtime_name       = "ClientOnlyRuntime"
+    execution_role_arn = "arn:aws:iam::123456789012:role/runtime-role"
+    image_uri          = "123456789012.dkr.ecr.us-east-1.amazonaws.com/runtime:v1"
+    authorizer_configuration = {
+      discovery_url   = "https://example.auth.us-east-1.amazoncognito.com/.well-known/openid-configuration"
+      allowed_clients = ["portal"]
+    }
+  }
+
+  assert {
+    condition = (
+      aws_bedrockagentcore_agent_runtime.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_audience == null &&
+      aws_bedrockagentcore_agent_runtime.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_scopes == null
+    )
+    error_message = "Unconfigured JWT restrictions must be omitted instead of sent as invalid empty arrays."
+  }
+}
