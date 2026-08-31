@@ -60,6 +60,13 @@ run "jwt_runtime_trusts_only_configured_and_gateway_workloads" {
     ])
     error_message = "The Runtime must retain caller workloads and add the module-created Gateway workload identity."
   }
+
+  assert {
+    condition = output.agent_runtime_allowed_hosting_environment_arns == tolist([
+      "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/operator-abcdefghij",
+    ])
+    error_message = "Gateway-only Runtime trust must also include the module-created Gateway hosting environment ARN."
+  }
 }
 
 run "gateway_workload_trust_is_explicit" {

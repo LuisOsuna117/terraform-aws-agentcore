@@ -48,11 +48,14 @@ locals {
   ) : var.image_uri
 
   effective_runtime_authorizer_configuration = var.runtime_authorizer_configuration == null ? null : {
-    discovery_url              = var.runtime_authorizer_configuration.discovery_url
-    allowed_audience           = var.runtime_authorizer_configuration.allowed_audience
-    allowed_clients            = var.runtime_authorizer_configuration.allowed_clients
-    allowed_scopes             = var.runtime_authorizer_configuration.allowed_scopes
-    hosting_environment_arns   = var.runtime_authorizer_configuration.hosting_environment_arns
+    discovery_url    = var.runtime_authorizer_configuration.discovery_url
+    allowed_audience = var.runtime_authorizer_configuration.allowed_audience
+    allowed_clients  = var.runtime_authorizer_configuration.allowed_clients
+    allowed_scopes   = var.runtime_authorizer_configuration.allowed_scopes
+    hosting_environment_arns = var.runtime_trust_gateway_workload_identity ? distinct(concat(
+      var.runtime_authorizer_configuration.hosting_environment_arns,
+      [module.gateway[0].gateway_arn],
+    )) : var.runtime_authorizer_configuration.hosting_environment_arns
     custom_claims              = var.runtime_authorizer_configuration.custom_claims
     private_endpoint           = var.runtime_authorizer_configuration.private_endpoint
     private_endpoint_overrides = var.runtime_authorizer_configuration.private_endpoint_overrides

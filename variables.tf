@@ -216,7 +216,7 @@ variable "runtime_authorizer_configuration" {
 }
 
 variable "runtime_trust_gateway_workload_identity" {
-  description = "When true, adds the workload identity of the Gateway created by this module call to the Runtime CUSTOM_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation."
+  description = "When true, adds the workload identity and hosting environment ARN of the Gateway created by this module call to the Runtime CUSTOM_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation."
   type        = bool
   default     = false
 }

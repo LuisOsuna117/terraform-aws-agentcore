@@ -40,6 +40,14 @@ output "agent_runtime_allowed_workload_identities" {
   )
 }
 
+output "agent_runtime_allowed_hosting_environment_arns" {
+  description = "CUSTOM_JWT hosting environment ARNs allowed to invoke the Runtime, including the module-created Gateway ARN when opted in."
+  value = local.effective_runtime_authorizer_configuration == null ? [] : try(
+    local.effective_runtime_authorizer_configuration.hosting_environment_arns,
+    [],
+  )
+}
+
 # ==============================================================================
 # AgentCore Code Interpreter
 # ==============================================================================
