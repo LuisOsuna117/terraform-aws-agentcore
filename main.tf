@@ -710,6 +710,12 @@ module "gateway_policies" {
   policy_engine_id     = local.effective_policy_engine_id
   policies             = local.rendered_gateway_policies
   tags                 = local.common_tags
+
+  depends_on = [
+    module.gateway_runtime_target,
+    module.gateway_runtime_schema_target,
+    module.gateway_connector_target,
+  ]
 }
 
 resource "aws_cloudformation_stack" "temporal_policy" {
@@ -743,6 +749,12 @@ resource "aws_cloudformation_stack" "temporal_policy" {
   })
 
   tags = local.common_tags
+
+  depends_on = [
+    module.gateway_runtime_target,
+    module.gateway_runtime_schema_target,
+    module.gateway_connector_target,
+  ]
 }
 
 module "browser" {
@@ -778,16 +790,15 @@ module "gateway_connector_target" {
   for_each = var.create_gateway_connectors ? var.gateway_connector_targets : {}
   source   = "./modules/gateway-connector-target"
 
-  gateway_identifier    = module.gateway[0].gateway_id
-  name                  = coalesce(each.value.name, each.key)
-  description           = each.value.description
-  connector_id          = each.value.connector_id
-  connector_version     = each.value.connector_version
-  configurations        = each.value.configurations
-  region                = each.value.region
-  log_retention_in_days = each.value.log_retention_in_days
-  timeouts              = each.value.timeouts
-  tags                  = merge(local.common_tags, each.value.tags)
+  gateway_identifier = module.gateway[0].gateway_id
+  name               = coalesce(each.value.name, each.key)
+  description        = each.value.description
+  connector_id       = each.value.connector_id
+  connector_version  = each.value.connector_version
+  configurations     = each.value.configurations
+  region             = each.value.region
+  timeouts           = each.value.timeouts
+  tags               = merge(local.common_tags, each.value.tags)
 }
 
 # ==============================================================================
