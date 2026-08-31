@@ -46,7 +46,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🛡️ **VPC mode** — set `network_mode = "VPC"` and supply `vpc_subnet_ids` / `vpc_security_group_ids` to run the runtime inside your VPC without a public endpoint.
 - 🔐 **JWT authorizer** — set `authorizer_discovery_url` to protect the runtime endpoint with OIDC/JWT auth, scoped by audience and client ID.
 - ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
-- 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
+- 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, `A2A`, or `AGUI` to match your agent's communication model.
 - 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — use the native `target_configuration` shape for direct Runtime HTTP routing or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets.
@@ -317,7 +317,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_runtime_resource_policy_configuration"></a> [runtime\_resource\_policy\_configuration](#input\_runtime\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow\_gateway\_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns          = optional(set(string), [])<br/>    allow_gateway_role = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_runtime_timeouts"></a> [runtime\_timeouts](#input\_runtime\_timeouts) | Optional create, update, and delete timeouts for the Runtime. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_runtime_trust_gateway_workload_identity"></a> [runtime\_trust\_gateway\_workload\_identity](#input\_runtime\_trust\_gateway\_workload\_identity) | When true, adds the workload identity and hosting environment ARN of the Gateway created by this module call to the Runtime CUSTOM\_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation. | `bool` | `false` | no |
-| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
+| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
 | <a name="input_temporal_policy_templates"></a> [temporal\_policy\_templates](#input\_temporal\_policy\_templates) | Dogwood policies rendered with this invocation's Gateway ARN as gateway\_arn. | <pre>map(object({<br/>    statement_template = string<br/>    template_values    = optional(map(string), {})<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    enforcement_mode   = optional(string, "LOG_ONLY")<br/>    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")<br/>  }))</pre> | `{}` | no |
@@ -651,14 +651,14 @@ module "agentcore" {
 
 When `gateway_attach_runtime_target = true`, the root module adds its Runtime to
 `gateway_targets` under the stable key `runtime`. `server_protocol = "MCP"`
-produces an MCP Server target; HTTP and A2A runtimes use direct HTTP routing.
+produces an MCP Server target; HTTP, A2A, and AG-UI runtimes use direct HTTP routing.
 The two resource-policy configurations remain opt-in. The module injects the
 exact generated resource ARN, explicitly denies unlisted callers, and can use
 its own Gateway role as the Runtime principal. This follows the
 [AgentCore resource-policy requirements](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html).
 
 For an HTTP Runtime target governed by AgentCore Policy, provide the API schema
-explicitly; MCP and A2A targets receive their protocol schema from AgentCore:
+explicitly; MCP, A2A, and AG-UI targets receive their protocol schema from AgentCore:
 
 ```hcl
 gateway_runtime_target = {
@@ -1056,7 +1056,7 @@ Set `gateway_attach_runtime_target = true` when the same root module call create
 
 - `idle_runtime_session_timeout` — seconds before an idle session is reaped; reduces cost in low-traffic deployments.
 - `max_lifetime` — hard cap on instance lifetime; forces rotation on a schedule.
-- `server_protocol` — valid values are `HTTP` (default), `MCP`, and `A2A`. Must match the protocol your agent client uses.
+- `server_protocol` — valid values are `HTTP` (default), `MCP`, `A2A`, and `AGUI`. Must match the protocol your agent client uses.
 - `request_header_allowlist` — list of HTTP headers forwarded to the container; useful for passing correlation IDs or auth context.
 
 ### 🆔 Workload identity ARN

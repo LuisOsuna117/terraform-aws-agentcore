@@ -1,5 +1,25 @@
 mock_provider "aws" {}
 
+run "runtime_supports_agui" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    runtime_name       = "AgUiRuntime"
+    execution_role_arn = "arn:aws:iam::123456789012:role/runtime-role"
+    image_uri          = "123456789012.dkr.ecr.us-east-1.amazonaws.com/runtime:v1"
+    server_protocol    = "AGUI"
+  }
+
+  assert {
+    condition     = one(aws_bedrockagentcore_agent_runtime.this.protocol_configuration).server_protocol == "AGUI"
+    error_message = "Runtime must preserve the AG-UI server protocol."
+  }
+}
+
 run "runtime_supports_code_artifact_filesystems_and_tags" {
   command = plan
 

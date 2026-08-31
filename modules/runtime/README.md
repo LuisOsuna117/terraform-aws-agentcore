@@ -51,7 +51,7 @@ No modules.
 | <a name="input_region"></a> [region](#input\_region) | AWS Region in which to manage the Runtime. Defaults to the provider Region. | `string` | `null` | no |
 | <a name="input_request_header_allowlist"></a> [request\_header\_allowlist](#input\_request\_header\_allowlist) | List of HTTP request headers to pass through to the runtime. When empty, no additional headers are forwarded. | `list(string)` | `[]` | no |
 | <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Resolved name for the AgentCore runtime (hyphens already converted to underscores). | `string` | n/a | yes |
-| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
+| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to the Runtime. | `map(string)` | `{}` | no |
 | <a name="input_timeouts"></a> [timeouts](#input\_timeouts) | Optional create, update, and delete timeouts for the Runtime. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_vpc_security_group_ids"></a> [vpc\_security\_group\_ids](#input\_vpc\_security\_group\_ids) | Security group IDs for VPC mode. Required when network\_mode = "VPC". | `list(string)` | `[]` | no |

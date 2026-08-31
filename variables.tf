@@ -258,13 +258,13 @@ variable "max_lifetime" {
 # ==============================================================================
 
 variable "server_protocol" {
-  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies."
+  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies."
   type        = string
   default     = null
 
   validation {
-    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
-    error_message = "server_protocol must be one of: HTTP, MCP, A2A."
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A", "AGUI"], var.server_protocol)
+    error_message = "server_protocol must be one of: HTTP, MCP, A2A, AGUI."
   }
 }
 

@@ -141,6 +141,26 @@ run "self_runtime_defaults_to_http_target" {
   }
 }
 
+run "self_agui_runtime_uses_general_gateway_target" {
+  command = plan
+
+  variables {
+    name                          = "self-agui-gateway"
+    create_build_pipeline         = false
+    create_runtime                = true
+    create_execution_role         = true
+    image_uri                     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/self-agui-gateway:test"
+    server_protocol               = "AGUI"
+    create_gateway                = true
+    gateway_attach_runtime_target = true
+  }
+
+  assert {
+    condition     = output.gateway_protocol_type == null && length(output.gateway_target_invocation_urls) == 1
+    error_message = "An AG-UI Runtime must use a direct HTTP Gateway target without MCP aggregation."
+  }
+}
+
 run "self_runtime_with_schema_uses_the_isolated_target" {
   command = apply
 
