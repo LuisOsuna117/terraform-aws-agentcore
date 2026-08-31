@@ -33,9 +33,7 @@ run "inline_schema_uses_the_isolated_cloudformation_target" {
     }
 
     credential_provider_configuration = {
-      gateway_iam_role = {
-        service = "bedrock-agentcore"
-      }
+      gateway_iam_role = {}
     }
 
     metadata_configuration = {
@@ -61,6 +59,11 @@ run "inline_schema_uses_the_isolated_cloudformation_target" {
   assert {
     condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.RuntimeTarget.Properties.CredentialProviderConfigurations[0].CredentialProviderType == "GATEWAY_IAM_ROLE"
     error_message = "The isolated target must preserve the selected credential provider type."
+  }
+
+  assert {
+    condition     = !contains(keys(jsondecode(aws_cloudformation_stack.this.template_body).Resources.RuntimeTarget.Properties.CredentialProviderConfigurations[0]), "CredentialProvider")
+    error_message = "AgentCore Runtime targets must use the basic GATEWAY_IAM_ROLE configuration without IamCredentialProvider."
   }
 
   assert {

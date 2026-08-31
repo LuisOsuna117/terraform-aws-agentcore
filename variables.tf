@@ -849,7 +849,7 @@ variable "gateway_runtime_target" {
         bucket_owner_account_id = optional(string)
       }))
     }))
-    credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })
+    credential_provider_configuration = optional(any, { gateway_iam_role = {} })
     metadata_configuration = optional(object({
       allowed_query_parameters = optional(set(string), [])
       allowed_request_headers  = optional(set(string), [])
