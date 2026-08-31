@@ -169,7 +169,7 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.61.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.61, < 7.0 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ## Modules

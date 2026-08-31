@@ -66,6 +66,38 @@ run "root_instance_owns_gateway_and_runtime_resource_policies" {
   }
 
   assert {
+    condition = contains(tolist(one([
+      for statement in jsondecode(output.resource_policies["gateway"].policy).Statement : statement
+      if statement.Sid == "AllowConfiguredRoles"
+    ]).Principal.AWS), "arn:aws:iam::111122223333:root")
+    error_message = "The Gateway allow statement must use the role account root so a reviewed role can be declared before it exists."
+  }
+
+  assert {
+    condition = contains(tolist(one([
+      for statement in jsondecode(output.resource_policies["gateway"].policy).Statement : statement
+      if statement.Sid == "AllowConfiguredRoles"
+    ]).Condition.ArnEquals["aws:PrincipalArn"]), "arn:aws:iam::111122223333:role/tenant-gateway")
+    error_message = "The Gateway account-root principal must be narrowed to the exact configured role ARN."
+  }
+
+  assert {
+    condition = contains(tolist(one([
+      for statement in jsondecode(output.resource_policies["runtime"].policy).Statement : statement
+      if statement.Sid == "AllowConfiguredRoles"
+    ]).Principal.AWS), "arn:aws:iam::123456789012:root")
+    error_message = "The Runtime allow statement must use the trusted role account root."
+  }
+
+  assert {
+    condition = contains(tolist(one([
+      for statement in jsondecode(output.resource_policies["runtime"].policy).Statement : statement
+      if statement.Sid == "AllowConfiguredRoles"
+    ]).Condition.ArnEquals["aws:PrincipalArn"]), output.gateway_role_arn)
+    error_message = "The Runtime account-root principal must be narrowed to the exact Gateway role ARN."
+  }
+
+  assert {
     condition = alltrue([
       for statement in jsondecode(output.resource_policies["gateway"].policy).Statement :
       statement.Resource == output.gateway_arn

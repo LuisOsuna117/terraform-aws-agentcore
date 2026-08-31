@@ -122,6 +122,14 @@ locals {
     tolist(var.runtime_resource_policy_configuration.role_arns),
     var.runtime_resource_policy_configuration.allow_gateway_role ? [try(module.gateway[0].role_arn, null)] : [],
   ))))
+  gateway_resource_policy_account_root_arns = sort(distinct([
+    for role_arn in local.gateway_resource_policy_role_arns :
+    "arn:${split(":", role_arn)[1]}:iam::${split(":", role_arn)[4]}:root"
+  ]))
+  runtime_resource_policy_account_root_arns = sort(distinct([
+    for role_arn in local.runtime_resource_policy_role_arns :
+    "arn:${split(":", role_arn)[1]}:iam::${split(":", role_arn)[4]}:root"
+  ]))
 
   gateway_resource_policy = var.gateway_resource_policy_configuration == null ? null : jsonencode({
     Version = "2012-10-17"
@@ -129,9 +137,12 @@ locals {
       length(local.gateway_resource_policy_role_arns) == 0 ? [] : [{
         Sid       = "AllowConfiguredRoles"
         Effect    = "Allow"
-        Principal = { AWS = local.gateway_resource_policy_role_arns }
+        Principal = { AWS = local.gateway_resource_policy_account_root_arns }
         Action    = "bedrock-agentcore:InvokeGateway"
         Resource  = try(module.gateway[0].gateway_arn, null)
+        Condition = {
+          ArnEquals = { "aws:PrincipalArn" = local.gateway_resource_policy_role_arns }
+        }
       }],
       [merge(
         {
@@ -156,9 +167,12 @@ locals {
       length(local.runtime_resource_policy_role_arns) == 0 ? [] : [{
         Sid       = "AllowConfiguredRoles"
         Effect    = "Allow"
-        Principal = { AWS = local.runtime_resource_policy_role_arns }
+        Principal = { AWS = local.runtime_resource_policy_account_root_arns }
         Action    = "bedrock-agentcore:InvokeAgentRuntime"
         Resource  = try(module.runtime[0].agent_runtime_arn, null)
+        Condition = {
+          ArnEquals = { "aws:PrincipalArn" = local.runtime_resource_policy_role_arns }
+        }
       }],
       [merge(
         {
