@@ -790,15 +790,16 @@ module "gateway_connector_target" {
   for_each = var.create_gateway_connectors ? var.gateway_connector_targets : {}
   source   = "./modules/gateway-connector-target"
 
-  gateway_identifier = module.gateway[0].gateway_id
-  name               = coalesce(each.value.name, each.key)
-  description        = each.value.description
-  connector_id       = each.value.connector_id
-  connector_version  = each.value.connector_version
-  configurations     = each.value.configurations
-  region             = each.value.region
-  timeouts           = each.value.timeouts
-  tags               = merge(local.common_tags, each.value.tags)
+  gateway_identifier    = module.gateway[0].gateway_id
+  name                  = coalesce(each.value.name, each.key)
+  description           = each.value.description
+  connector_id          = each.value.connector_id
+  connector_version     = each.value.connector_version
+  configurations        = each.value.configurations
+  region                = each.value.region
+  log_retention_in_days = each.value.log_retention_in_days
+  timeouts              = each.value.timeouts
+  tags                  = merge(local.common_tags, each.value.tags)
 }
 
 # ==============================================================================

@@ -1,8 +1,8 @@
 # AgentCore Gateway connector target submodule
 
-Creates one version-pinned built-in Connector target on an existing AgentCore Gateway. This isolated, opt-in submodule uses the native CloudFormation resource while the AWS Provider does not expose the Connector target shape.
+Creates one version-pinned built-in Connector target on an existing AgentCore Gateway. This isolated, opt-in submodule uses a CloudFormation custom resource while the AWS Provider and the regional CloudFormation schema do not expose the Connector target shape consistently.
 
-The caller remains responsible for granting the Gateway execution role the connector-specific invocation permissions documented by AWS.
+The lifecycle function signs requests to the documented AgentCore control-plane REST API, so it does not depend on the SDK model bundled into Lambda. Its IAM role is limited to the configured Gateway ARN. The caller remains responsible for granting the Gateway execution role the connector-specific invocation permissions documented by AWS.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -40,6 +40,7 @@ No modules.
 | <a name="input_connector_version"></a> [connector\_version](#input\_connector\_version) | Pinned connector version. A version is required so provider defaults cannot change behavior silently. | `string` | n/a | yes |
 | <a name="input_description"></a> [description](#input\_description) | Optional Gateway connector target description. | `string` | `null` | no |
 | <a name="input_gateway_identifier"></a> [gateway\_identifier](#input\_gateway\_identifier) | ID of the AgentCore Gateway that owns this connector target. | `string` | n/a | yes |
+| <a name="input_log_retention_in_days"></a> [log\_retention\_in\_days](#input\_log\_retention\_in\_days) | CloudWatch Logs retention for the isolated connector lifecycle provider. | `number` | `30` | no |
 | <a name="input_name"></a> [name](#input\_name) | Gateway connector target name. | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region in which to manage the connector target. Defaults to the provider Region. | `string` | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to the CloudFormation stack and its taggable resources. | `map(string)` | `{}` | no |

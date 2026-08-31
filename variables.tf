@@ -1131,14 +1131,15 @@ variable "create_gateway_connectors" {
 variable "gateway_connector_targets" {
   description = "Built-in connector targets keyed by caller-defined name."
   type = map(object({
-    name              = optional(string)
-    description       = optional(string)
-    connector_id      = string
-    connector_version = string
-    configurations    = any
-    region            = optional(string)
-    timeouts          = optional(any)
-    tags              = optional(map(string), {})
+    name                  = optional(string)
+    description           = optional(string)
+    connector_id          = string
+    connector_version     = string
+    configurations        = any
+    region                = optional(string)
+    log_retention_in_days = optional(number, 30)
+    timeouts              = optional(any)
+    tags                  = optional(map(string), {})
   }))
   default = {}
 }

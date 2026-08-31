@@ -42,17 +42,17 @@ run "connector_version_and_admin_policy_are_explicit" {
   }
 
   assert {
-    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Properties.TargetConfiguration.Mcp.Connector.Source.Version == "1.2.0"
+    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Properties.ConnectorVersion == "1.2.0"
     error_message = "The connector target must pin the requested version."
   }
 
   assert {
-    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Properties.TargetConfiguration.Mcp.Connector.Configurations[0].ParameterValues.domainFilter.include == ["docs.aws.amazon.com"]
+    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Properties.Configurations[0].parameterValues.domainFilter.include == ["docs.aws.amazon.com"]
     error_message = "Target-level connector configuration must be passed without weakening it."
   }
 }
 
-run "connector_uses_native_cloudformation_without_a_lifecycle_provider" {
+run "signed_lifecycle_provider_is_scoped_to_one_gateway" {
   command = plan
 
   module {
@@ -68,17 +68,32 @@ run "connector_uses_native_cloudformation_without_a_lifecycle_provider" {
   }
 
   assert {
-    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Type == "AWS::BedrockAgentCore::GatewayTarget"
-    error_message = "Connector targets must use the native CloudFormation resource."
+    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Type == "Custom::AgentCoreGatewayConnectorTarget"
+    error_message = "Connector targets must use the isolated control-plane lifecycle provider until CloudFormation accepts the connector shape."
   }
 
   assert {
-    condition     = !strcontains(aws_cloudformation_stack.this.template_body, "AWS::Lambda::Function")
-    error_message = "Native connector targets must not carry a custom lifecycle Lambda."
+    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleRole.Properties.Policies[0].PolicyDocument.Statement[1].Resource == "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/reviewed-gateway-abcdefghij"
+    error_message = "Connector target lifecycle permissions must be scoped to the configured Gateway."
   }
 
   assert {
-    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Properties.GatewayIdentifier == "reviewed-gateway-abcdefghij"
-    error_message = "The native connector target must remain scoped to one Gateway."
+    condition     = !strcontains(aws_cloudformation_stack.this.template_body, "FullAccess")
+    error_message = "The connector target lifecycle provider must not use FullAccess policies."
+  }
+
+  assert {
+    condition     = contains(jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleRole.Properties.Policies[0].PolicyDocument.Statement[1].Action, "bedrock-agentcore:SynchronizeGatewayTargets")
+    error_message = "Connector lifecycle permissions must include the Gateway synchronization dependency."
+  }
+
+  assert {
+    condition     = strcontains(jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleHandler.Properties.Code.ZipFile, "SigV4Auth")
+    error_message = "The lifecycle provider must sign documented control-plane requests without depending on the bundled SDK model."
+  }
+
+  assert {
+    condition     = !strcontains(aws_cloudformation_stack.this.template_body, "AWS::BedrockAgentCore::GatewayTarget")
+    error_message = "The connector must not use the regional CloudFormation schema that rejects connector targets."
   }
 }
