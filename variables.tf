@@ -204,7 +204,7 @@ variable "runtime_authorizer_configuration" {
   default = null
 
   validation {
-    condition = var.runtime_authorizer_configuration == null || (
+    condition = var.runtime_authorizer_configuration == null ? true : (
       length(var.runtime_authorizer_configuration.workload_identities) <= 10 &&
       alltrue([
         for identity in var.runtime_authorizer_configuration.workload_identities :

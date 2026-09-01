@@ -682,15 +682,26 @@ resource "aws_iam_role_policy" "gateway_runtime_invoke" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "InvokeAttachedAgentCoreRuntime"
-      Effect = "Allow"
-      Action = ["bedrock-agentcore:InvokeAgentRuntime"]
-      Resource = [
-        local.gateway_runtime_arn,
-        "${local.gateway_runtime_arn}/runtime-endpoint/*",
-      ]
-    }]
+    Statement = [
+      {
+        Sid    = "InvokeAttachedAgentCoreRuntime"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Resource = [
+          local.gateway_runtime_arn,
+          "${local.gateway_runtime_arn}/runtime-endpoint/*",
+        ]
+      },
+      {
+        Sid    = "ObtainGatewayWorkloadToken"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:GetWorkloadAccessToken"]
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:bedrock-agentcore:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default",
+          module.gateway[0].workload_identity_arn,
+        ]
+      },
+    ]
   })
 }
 

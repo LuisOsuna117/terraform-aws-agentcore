@@ -17,6 +17,9 @@ mock_provider "aws" {
       gateway_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gateway-a1b2c3d4e5"
       gateway_id  = "gateway-a1b2c3d4e5"
       gateway_url = "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com"
+      workload_identity_details = [{
+        workload_identity_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/gateway-a1b2c3d4e5"
+      }]
     }
   }
 
@@ -195,6 +198,24 @@ run "self_runtime_with_schema_uses_the_isolated_target" {
   assert {
     condition     = output.gateway_target_invocation_urls["runtime"] == "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com/SchemaRuntime/invocations"
     error_message = "The schema-bearing Runtime target must preserve the direct Gateway invocation URL."
+  }
+
+  assert {
+    condition = contains(
+      jsondecode(aws_iam_role_policy.gateway_runtime_invoke[0].policy).Statement[*].Sid,
+      "ObtainGatewayWorkloadToken",
+    )
+    error_message = "The schema-bearing self target must let its Gateway obtain a workload token."
+  }
+
+  assert {
+    condition = alltrue([
+      for statement in jsondecode(aws_iam_role_policy.gateway_runtime_invoke[0].policy).Statement :
+      anytrue([for resource in statement.Resource : endswith(resource, ":workload-identity-directory/default")]) &&
+      contains(statement.Resource, "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/gateway-a1b2c3d4e5")
+      if statement.Sid == "ObtainGatewayWorkloadToken"
+    ])
+    error_message = "The Gateway workload-token grant must include its directory and exact workload identity."
   }
 }
 

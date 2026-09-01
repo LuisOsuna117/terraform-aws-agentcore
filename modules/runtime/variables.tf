@@ -183,7 +183,7 @@ variable "authorizer_configuration" {
   }
 
   validation {
-    condition = var.authorizer_configuration == null || (
+    condition = var.authorizer_configuration == null ? true : (
       length(var.authorizer_configuration.workload_identities) <= 10 &&
       alltrue([
         for identity in var.authorizer_configuration.workload_identities :
