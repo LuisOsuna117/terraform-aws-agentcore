@@ -16,6 +16,11 @@ resource "terraform_data" "validations" {
       )
       error_message = "VPC Browser mode requires vpc_security_group_ids and vpc_subnet_ids."
     }
+
+    precondition {
+      condition     = !var.browser_signing_enabled || var.execution_role_arn != null
+      error_message = "Browser request signing requires execution_role_arn."
+    }
   }
 }
 

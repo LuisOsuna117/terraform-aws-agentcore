@@ -46,14 +46,6 @@ locals {
         )
       }
     },
-    try(local.credential.gateway_iam_role, null) == null ? {} : {
-      CredentialProvider = {
-        IamCredentialProvider = merge(
-          { Service = coalesce(local.credential.gateway_iam_role.service, "bedrock-agentcore") },
-          local.credential.gateway_iam_role.region == null ? {} : { Region = local.credential.gateway_iam_role.region },
-        )
-      }
-    },
     try(local.credential.oauth, null) == null ? {} : {
       CredentialProvider = {
         OauthCredentialProvider = merge(

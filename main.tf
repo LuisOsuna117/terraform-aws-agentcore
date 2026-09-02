@@ -22,6 +22,10 @@ locals {
   # Code Interpreter execution role for least-privilege deployments.
   code_interpreter_execution_role_arn = var.code_interpreter_execution_role_arn != null ? var.code_interpreter_execution_role_arn : local.execution_role_arn
 
+  # A signed Browser also needs an execution role. Reuse this module
+  # invocation's runtime role unless the caller supplies a dedicated role.
+  browser_execution_role_arn = var.browser_execution_role_arn != null ? var.browser_execution_role_arn : local.execution_role_arn
+
   # Tags applied to every taggable resource.
   common_tags = merge(
     {
@@ -44,17 +48,20 @@ locals {
   ) : var.image_uri
 
   effective_runtime_authorizer_configuration = var.runtime_authorizer_configuration == null ? null : {
-    discovery_url              = var.runtime_authorizer_configuration.discovery_url
-    allowed_audience           = var.runtime_authorizer_configuration.allowed_audience
-    allowed_clients            = var.runtime_authorizer_configuration.allowed_clients
-    allowed_scopes             = var.runtime_authorizer_configuration.allowed_scopes
-    hosting_environment_arns   = var.runtime_authorizer_configuration.hosting_environment_arns
+    discovery_url    = var.runtime_authorizer_configuration.discovery_url
+    allowed_audience = var.runtime_authorizer_configuration.allowed_audience
+    allowed_clients  = var.runtime_authorizer_configuration.allowed_clients
+    allowed_scopes   = var.runtime_authorizer_configuration.allowed_scopes
+    hosting_environment_arns = var.runtime_trust_gateway_workload_identity ? distinct(concat(
+      var.runtime_authorizer_configuration.hosting_environment_arns,
+      [module.gateway[0].gateway_arn],
+    )) : var.runtime_authorizer_configuration.hosting_environment_arns
     custom_claims              = var.runtime_authorizer_configuration.custom_claims
     private_endpoint           = var.runtime_authorizer_configuration.private_endpoint
     private_endpoint_overrides = var.runtime_authorizer_configuration.private_endpoint_overrides
     workload_identities = var.runtime_trust_gateway_workload_identity ? distinct(concat(
       var.runtime_authorizer_configuration.workload_identities,
-      [module.gateway[0].workload_identity_arn],
+      [element(reverse(split("/", module.gateway[0].workload_identity_arn)), 0)],
     )) : var.runtime_authorizer_configuration.workload_identities
   }
 
@@ -122,6 +129,14 @@ locals {
     tolist(var.runtime_resource_policy_configuration.role_arns),
     var.runtime_resource_policy_configuration.allow_gateway_role ? [try(module.gateway[0].role_arn, null)] : [],
   ))))
+  gateway_resource_policy_account_root_arns = sort(distinct([
+    for role_arn in local.gateway_resource_policy_role_arns :
+    "arn:${split(":", role_arn)[1]}:iam::${split(":", role_arn)[4]}:root"
+  ]))
+  runtime_resource_policy_account_root_arns = sort(distinct([
+    for role_arn in local.runtime_resource_policy_role_arns :
+    "arn:${split(":", role_arn)[1]}:iam::${split(":", role_arn)[4]}:root"
+  ]))
 
   gateway_resource_policy = var.gateway_resource_policy_configuration == null ? null : jsonencode({
     Version = "2012-10-17"
@@ -129,9 +144,12 @@ locals {
       length(local.gateway_resource_policy_role_arns) == 0 ? [] : [{
         Sid       = "AllowConfiguredRoles"
         Effect    = "Allow"
-        Principal = { AWS = local.gateway_resource_policy_role_arns }
+        Principal = { AWS = local.gateway_resource_policy_account_root_arns }
         Action    = "bedrock-agentcore:InvokeGateway"
         Resource  = try(module.gateway[0].gateway_arn, null)
+        Condition = {
+          ArnEquals = { "aws:PrincipalArn" = local.gateway_resource_policy_role_arns }
+        }
       }],
       [merge(
         {
@@ -156,9 +174,12 @@ locals {
       length(local.runtime_resource_policy_role_arns) == 0 ? [] : [{
         Sid       = "AllowConfiguredRoles"
         Effect    = "Allow"
-        Principal = { AWS = local.runtime_resource_policy_role_arns }
+        Principal = { AWS = local.runtime_resource_policy_account_root_arns }
         Action    = "bedrock-agentcore:InvokeAgentRuntime"
         Resource  = try(module.runtime[0].agent_runtime_arn, null)
+        Condition = {
+          ArnEquals = { "aws:PrincipalArn" = local.runtime_resource_policy_role_arns }
+        }
       }],
       [merge(
         {
@@ -661,15 +682,26 @@ resource "aws_iam_role_policy" "gateway_runtime_invoke" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "InvokeAttachedAgentCoreRuntime"
-      Effect = "Allow"
-      Action = ["bedrock-agentcore:InvokeAgentRuntime"]
-      Resource = [
-        local.gateway_runtime_arn,
-        "${local.gateway_runtime_arn}/runtime-endpoint/*",
-      ]
-    }]
+    Statement = [
+      {
+        Sid    = "InvokeAttachedAgentCoreRuntime"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Resource = [
+          local.gateway_runtime_arn,
+          "${local.gateway_runtime_arn}/runtime-endpoint/*",
+        ]
+      },
+      {
+        Sid    = "ObtainGatewayWorkloadToken"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:GetWorkloadAccessToken"]
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:bedrock-agentcore:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:workload-identity-directory/default",
+          module.gateway[0].workload_identity_arn,
+        ]
+      },
+    ]
   })
 }
 
@@ -710,6 +742,12 @@ module "gateway_policies" {
   policy_engine_id     = local.effective_policy_engine_id
   policies             = local.rendered_gateway_policies
   tags                 = local.common_tags
+
+  depends_on = [
+    module.gateway_runtime_target,
+    module.gateway_runtime_schema_target,
+    module.gateway_connector_target,
+  ]
 }
 
 resource "aws_cloudformation_stack" "temporal_policy" {
@@ -721,9 +759,8 @@ resource "aws_cloudformation_stack" "temporal_policy" {
     Resources = {
       Policy = {
         Type = "AWS::BedrockAgentCore::Policy"
-        Properties = {
+        Properties = merge({
           Name            = replace(coalesce(each.value.name, each.key), "-", "_")
-          Description     = each.value.description
           PolicyEngineId  = local.effective_policy_engine_id
           EnforcementMode = each.value.enforcement_mode
           ValidationMode  = each.value.validation_mode
@@ -732,7 +769,9 @@ resource "aws_cloudformation_stack" "temporal_policy" {
               Statement = each.value.statement
             }
           }
-        }
+          }, each.value.description == null ? {} : {
+          Description = each.value.description
+        })
       }
     }
     Outputs = {
@@ -743,6 +782,12 @@ resource "aws_cloudformation_stack" "temporal_policy" {
   })
 
   tags = local.common_tags
+
+  depends_on = [
+    module.gateway_runtime_target,
+    module.gateway_runtime_schema_target,
+    module.gateway_connector_target,
+  ]
 }
 
 module "browser" {
@@ -752,7 +797,7 @@ module "browser" {
   name                    = coalesce(var.browser_name, var.name)
   create_browser          = true
   description             = var.browser_description
-  execution_role_arn      = var.browser_execution_role_arn
+  execution_role_arn      = local.browser_execution_role_arn
   network_mode            = var.browser_network_mode
   vpc_security_group_ids  = var.browser_vpc_security_group_ids
   vpc_subnet_ids          = var.browser_vpc_subnet_ids

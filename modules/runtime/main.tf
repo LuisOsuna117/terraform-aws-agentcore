@@ -60,9 +60,9 @@ resource "aws_bedrockagentcore_agent_runtime" "this" {
     content {
       custom_jwt_authorizer {
         discovery_url    = authorizer_configuration.value.discovery_url
-        allowed_audience = authorizer_configuration.value.allowed_audience
-        allowed_clients  = authorizer_configuration.value.allowed_clients
-        allowed_scopes   = authorizer_configuration.value.allowed_scopes
+        allowed_audience = length(authorizer_configuration.value.allowed_audience) == 0 ? null : authorizer_configuration.value.allowed_audience
+        allowed_clients  = length(authorizer_configuration.value.allowed_clients) == 0 ? null : authorizer_configuration.value.allowed_clients
+        allowed_scopes   = length(authorizer_configuration.value.allowed_scopes) == 0 ? null : authorizer_configuration.value.allowed_scopes
 
         dynamic "allowed_workload_configuration" {
           for_each = length(authorizer_configuration.value.workload_identities) + length(authorizer_configuration.value.hosting_environment_arns) == 0 ? [] : [1]

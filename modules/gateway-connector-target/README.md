@@ -1,8 +1,8 @@
 # AgentCore Gateway connector target submodule
 
-Creates one version-pinned built-in Connector target on an existing AgentCore Gateway. This isolated, opt-in submodule uses a CloudFormation custom resource because the AWS Provider does not yet expose the Connector target shape.
+Creates one version-pinned built-in Connector target on an existing AgentCore Gateway. This isolated, opt-in submodule uses a CloudFormation custom resource while the AWS Provider and the regional CloudFormation schema do not expose the Connector target shape consistently.
 
-The lifecycle provider can manage only targets on the configured Gateway ARN. Its Lambda and IAM role exist inside the submodule stack and are removed with the target. The caller remains responsible for granting the Gateway execution role the connector-specific invocation permissions documented by AWS.
+The lifecycle function signs requests to the documented AgentCore control-plane REST API, so it does not depend on the SDK model bundled into Lambda. Its IAM role is limited to the configured Gateway ARN. The caller remains responsible for granting the Gateway execution role the connector-specific invocation permissions documented by AWS.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements

@@ -52,7 +52,7 @@ run "connector_version_and_admin_policy_are_explicit" {
   }
 }
 
-run "lifecycle_provider_is_scoped_to_one_gateway" {
+run "signed_lifecycle_provider_is_scoped_to_one_gateway" {
   command = plan
 
   module {
@@ -68,6 +68,11 @@ run "lifecycle_provider_is_scoped_to_one_gateway" {
   }
 
   assert {
+    condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.ConnectorTarget.Type == "Custom::AgentCoreGatewayConnectorTarget"
+    error_message = "Connector targets must use the isolated control-plane lifecycle provider until CloudFormation accepts the connector shape."
+  }
+
+  assert {
     condition     = jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleRole.Properties.Policies[0].PolicyDocument.Statement[1].Resource == "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/reviewed-gateway-abcdefghij"
     error_message = "Connector target lifecycle permissions must be scoped to the configured Gateway."
   }
@@ -79,6 +84,16 @@ run "lifecycle_provider_is_scoped_to_one_gateway" {
 
   assert {
     condition     = contains(jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleRole.Properties.Policies[0].PolicyDocument.Statement[1].Action, "bedrock-agentcore:SynchronizeGatewayTargets")
-    error_message = "Connector target lifecycle permissions must include the synchronization dependency documented by AgentCore."
+    error_message = "Connector lifecycle permissions must include the Gateway synchronization dependency."
+  }
+
+  assert {
+    condition     = strcontains(jsondecode(aws_cloudformation_stack.this.template_body).Resources.LifecycleHandler.Properties.Code.ZipFile, "SigV4Auth")
+    error_message = "The lifecycle provider must sign documented control-plane requests without depending on the bundled SDK model."
+  }
+
+  assert {
+    condition     = !strcontains(aws_cloudformation_stack.this.template_body, "AWS::BedrockAgentCore::GatewayTarget")
+    error_message = "The connector must not use the regional CloudFormation schema that rejects connector targets."
   }
 }

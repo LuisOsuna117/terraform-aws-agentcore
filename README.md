@@ -46,7 +46,7 @@ Add a `Dockerfile` and your agent code under `./agent-code/`, then run `terrafor
 - 🛡️ **VPC mode** — set `network_mode = "VPC"` and supply `vpc_subnet_ids` / `vpc_security_group_ids` to run the runtime inside your VPC without a public endpoint.
 - 🔐 **JWT authorizer** — set `authorizer_discovery_url` to protect the runtime endpoint with OIDC/JWT auth, scoped by audience and client ID.
 - ⏱️ **Lifecycle controls** — tune `idle_runtime_session_timeout` and `max_lifetime` to manage cost and resource cleanup.
-- 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, or `A2A` to match your agent's communication model.
+- 🔌 **Protocol selection** — set `server_protocol` to `HTTP`, `MCP`, `A2A`, or `AGUI` to match your agent's communication model.
 - 🧮 **Code Interpreter** — set `create_code_interpreter = true` to add a managed, isolated code-execution tool and expose its generated ID to the runtime.
 - 🧠 **Memory resource** — set `create_memory = true` to provision an `aws_bedrockagentcore_memory` resource alongside the AgentCore runtime.
 - 🌐 **General Gateway targets** — use the native `target_configuration` shape for direct Runtime HTTP routing or MCP-backed API Gateway, Lambda, MCP Server, OpenAPI, and Smithy targets.
@@ -219,7 +219,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_browser_certificate_secret_arn"></a> [browser\_certificate\_secret\_arn](#input\_browser\_certificate\_secret\_arn) | Optional Browser certificate secret ARN. | `string` | `null` | no |
 | <a name="input_browser_description"></a> [browser\_description](#input\_browser\_description) | Description of the Browser. | `string` | `null` | no |
 | <a name="input_browser_enterprise_policy"></a> [browser\_enterprise\_policy](#input\_browser\_enterprise\_policy) | Optional Browser enterprise policy. | `any` | `null` | no |
-| <a name="input_browser_execution_role_arn"></a> [browser\_execution\_role\_arn](#input\_browser\_execution\_role\_arn) | Optional Browser execution role ARN. | `string` | `null` | no |
+| <a name="input_browser_execution_role_arn"></a> [browser\_execution\_role\_arn](#input\_browser\_execution\_role\_arn) | Optional Browser execution role ARN. Defaults to the runtime execution role managed or supplied through execution\_role\_arn. | `string` | `null` | no |
 | <a name="input_browser_name"></a> [browser\_name](#input\_browser\_name) | Name of the Browser. Defaults to var.name. | `string` | `null` | no |
 | <a name="input_browser_network_mode"></a> [browser\_network\_mode](#input\_browser\_network\_mode) | Browser network mode: PUBLIC or VPC. | `string` | `"PUBLIC"` | no |
 | <a name="input_browser_profiles"></a> [browser\_profiles](#input\_browser\_profiles) | Browser Profiles keyed by caller-defined name. | `any` | `{}` | no |
@@ -281,7 +281,7 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_gateway_role_policy_arns"></a> [gateway\_role\_policy\_arns](#input\_gateway\_role\_policy\_arns) | Managed policy ARNs to attach to the module-created Gateway role. | `set(string)` | `[]` | no |
 | <a name="input_gateway_role_policy_statements"></a> [gateway\_role\_policy\_statements](#input\_gateway\_role\_policy\_statements) | Additional least-privilege IAM statements for the module-created Gateway role. | <pre>list(object({<br/>    sid       = optional(string)<br/>    effect    = optional(string, "Allow")<br/>    actions   = set(string)<br/>    resources = set(string)<br/>    condition = optional(any)<br/>  }))</pre> | `[]` | no |
 | <a name="input_gateway_runtime_invoke_arns"></a> [gateway\_runtime\_invoke\_arns](#input\_gateway\_runtime\_invoke\_arns) | Additional AgentCore Runtime ARNs the module-created Gateway role may invoke. HTTP Runtime target ARNs are inferred automatically. | `list(string)` | `[]` | no |
-| <a name="input_gateway_runtime_target"></a> [gateway\_runtime\_target](#input\_gateway\_runtime\_target) | Configuration for the module-created Runtime target when gateway\_attach\_runtime\_target is true. HTTP Runtime targets may opt into one inline or S3 API schema source. | <pre>object({<br/>    name        = optional(string)<br/>    description = optional(string)<br/>    region      = optional(string)<br/>    qualifier   = optional(string, "DEFAULT")<br/>    schema = optional(object({<br/>      inline_payload = optional(object({<br/>        payload = string<br/>      }))<br/>      s3 = optional(object({<br/>        uri                     = string<br/>        bucket_owner_account_id = optional(string)<br/>      }))<br/>    }))<br/>    credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })<br/>    metadata_configuration = optional(object({<br/>      allowed_query_parameters = optional(set(string), [])<br/>      allowed_request_headers  = optional(set(string), [])<br/>      allowed_response_headers = optional(set(string), [])<br/>    }))<br/>    private_endpoint = optional(any)<br/>    timeouts = optional(object({<br/>      create = optional(string)<br/>      update = optional(string)<br/>      delete = optional(string)<br/>    }))<br/>  })</pre> | `{}` | no |
+| <a name="input_gateway_runtime_target"></a> [gateway\_runtime\_target](#input\_gateway\_runtime\_target) | Configuration for the module-created Runtime target when gateway\_attach\_runtime\_target is true. HTTP Runtime targets may opt into one inline or S3 API schema source. | <pre>object({<br/>    name        = optional(string)<br/>    description = optional(string)<br/>    region      = optional(string)<br/>    qualifier   = optional(string, "DEFAULT")<br/>    schema = optional(object({<br/>      inline_payload = optional(object({<br/>        payload = string<br/>      }))<br/>      s3 = optional(object({<br/>        uri                     = string<br/>        bucket_owner_account_id = optional(string)<br/>      }))<br/>    }))<br/>    credential_provider_configuration = optional(any, { gateway_iam_role = {} })<br/>    metadata_configuration = optional(object({<br/>      allowed_query_parameters = optional(set(string), [])<br/>      allowed_request_headers  = optional(set(string), [])<br/>      allowed_response_headers = optional(set(string), [])<br/>    }))<br/>    private_endpoint = optional(any)<br/>    timeouts = optional(object({<br/>      create = optional(string)<br/>      update = optional(string)<br/>      delete = optional(string)<br/>    }))<br/>  })</pre> | `{}` | no |
 | <a name="input_gateway_targets"></a> [gateway\_targets](#input\_gateway\_targets) | Map of general Gateway Targets using the native target\_configuration, credential, metadata, private endpoint, and timeout shapes. | `any` | `{}` | no |
 | <a name="input_gateway_timeouts"></a> [gateway\_timeouts](#input\_gateway\_timeouts) | Optional create, update, and delete timeouts for the Gateway. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_idle_runtime_session_timeout"></a> [idle\_runtime\_session\_timeout](#input\_idle\_runtime\_session\_timeout) | Idle session timeout in seconds for the runtime. When null, the service default applies. | `number` | `null` | no |
@@ -316,8 +316,8 @@ Resources marked with a condition are only created when the corresponding flag i
 | <a name="input_runtime_region"></a> [runtime\_region](#input\_runtime\_region) | AWS Region in which to manage the Runtime. Defaults to the provider Region. | `string` | `null` | no |
 | <a name="input_runtime_resource_policy_configuration"></a> [runtime\_resource\_policy\_configuration](#input\_runtime\_resource\_policy\_configuration) | Optional IAM role allowlist for a resource policy attached to the module-created Runtime. Set allow\_gateway\_role to trust the Gateway role created or supplied by this module call. An empty effective role set creates an explicit deny-all policy. | <pre>object({<br/>    role_arns          = optional(set(string), [])<br/>    allow_gateway_role = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_runtime_timeouts"></a> [runtime\_timeouts](#input\_runtime\_timeouts) | Optional create, update, and delete timeouts for the Runtime. | <pre>object({<br/>    create = optional(string)<br/>    update = optional(string)<br/>    delete = optional(string)<br/>  })</pre> | `null` | no |
-| <a name="input_runtime_trust_gateway_workload_identity"></a> [runtime\_trust\_gateway\_workload\_identity](#input\_runtime\_trust\_gateway\_workload\_identity) | When true, adds the workload identity of the Gateway created by this module call to the Runtime CUSTOM\_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation. | `bool` | `false` | no |
-| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies. | `string` | `null` | no |
+| <a name="input_runtime_trust_gateway_workload_identity"></a> [runtime\_trust\_gateway\_workload\_identity](#input\_runtime\_trust\_gateway\_workload\_identity) | When true, adds the workload identity and hosting environment ARN of the Gateway created by this module call to the Runtime CUSTOM\_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation. | `bool` | `false` | no |
+| <a name="input_server_protocol"></a> [server\_protocol](#input\_server\_protocol) | Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies. | `string` | `null` | no |
 | <a name="input_source_bucket_force_destroy"></a> [source\_bucket\_force\_destroy](#input\_source\_bucket\_force\_destroy) | Allow the S3 source bucket to be destroyed even if it contains objects. Useful in non-production environments. Defaults to false for safety. | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Map of tags to apply to all taggable resources. Merged with module-level defaults. | `map(string)` | `{}` | no |
 | <a name="input_temporal_policy_templates"></a> [temporal\_policy\_templates](#input\_temporal\_policy\_templates) | Dogwood policies rendered with this invocation's Gateway ARN as gateway\_arn. | <pre>map(object({<br/>    statement_template = string<br/>    template_values    = optional(map(string), {})<br/>    name               = optional(string)<br/>    description        = optional(string)<br/>    enforcement_mode   = optional(string, "LOG_ONLY")<br/>    validation_mode    = optional(string, "FAIL_ON_ANY_FINDINGS")<br/>  }))</pre> | `{}` | no |
@@ -329,7 +329,8 @@ Resources marked with a condition are only created when the corresponding flag i
 
 | Name | Description |
 |------|-------------|
-| <a name="output_agent_runtime_allowed_workload_identities"></a> [agent\_runtime\_allowed\_workload\_identities](#output\_agent\_runtime\_allowed\_workload\_identities) | CUSTOM\_JWT workload identities allowed to invoke the Runtime, including the module-created Gateway identity when opted in. |
+| <a name="output_agent_runtime_allowed_hosting_environment_arns"></a> [agent\_runtime\_allowed\_hosting\_environment\_arns](#output\_agent\_runtime\_allowed\_hosting\_environment\_arns) | CUSTOM\_JWT hosting environment ARNs allowed to invoke the Runtime, including the module-created Gateway ARN when opted in. |
+| <a name="output_agent_runtime_allowed_workload_identities"></a> [agent\_runtime\_allowed\_workload\_identities](#output\_agent\_runtime\_allowed\_workload\_identities) | CUSTOM\_JWT workload identity names allowed to invoke the Runtime, including the module-created Gateway identity name when opted in. |
 | <a name="output_agent_runtime_arn"></a> [agent\_runtime\_arn](#output\_agent\_runtime\_arn) | ARN of the AgentCore runtime. Use this to grant invoke permissions to callers. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_id"></a> [agent\_runtime\_id](#output\_agent\_runtime\_id) | ID of the AgentCore runtime resource. Null when create\_runtime = false. |
 | <a name="output_agent_runtime_name"></a> [agent\_runtime\_name](#output\_agent\_runtime\_name) | Resolved name of the AgentCore runtime as registered with the Bedrock AgentCore API. Null when create\_runtime = false. |
@@ -650,14 +651,14 @@ module "agentcore" {
 
 When `gateway_attach_runtime_target = true`, the root module adds its Runtime to
 `gateway_targets` under the stable key `runtime`. `server_protocol = "MCP"`
-produces an MCP Server target; HTTP and A2A runtimes use direct HTTP routing.
+produces an MCP Server target; HTTP, A2A, and AG-UI runtimes use direct HTTP routing.
 The two resource-policy configurations remain opt-in. The module injects the
 exact generated resource ARN, explicitly denies unlisted callers, and can use
 its own Gateway role as the Runtime principal. This follows the
 [AgentCore resource-policy requirements](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html).
 
 For an HTTP Runtime target governed by AgentCore Policy, provide the API schema
-explicitly; MCP and A2A targets receive their protocol schema from AgentCore:
+explicitly; MCP, A2A, and AG-UI targets receive their protocol schema from AgentCore:
 
 ```hcl
 gateway_runtime_target = {
@@ -1055,7 +1056,7 @@ Set `gateway_attach_runtime_target = true` when the same root module call create
 
 - `idle_runtime_session_timeout` — seconds before an idle session is reaped; reduces cost in low-traffic deployments.
 - `max_lifetime` — hard cap on instance lifetime; forces rotation on a schedule.
-- `server_protocol` — valid values are `HTTP` (default), `MCP`, and `A2A`. Must match the protocol your agent client uses.
+- `server_protocol` — valid values are `HTTP` (default), `MCP`, `A2A`, and `AGUI`. Must match the protocol your agent client uses.
 - `request_header_allowlist` — list of HTTP headers forwarded to the container; useful for passing correlation IDs or auth context.
 
 ### 🆔 Workload identity ARN

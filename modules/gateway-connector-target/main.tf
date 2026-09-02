@@ -26,6 +26,7 @@ locals {
       ConnectorVersion  = var.connector_version
       Configurations    = local.connector_configurations
       Region            = local.effective_region
+      Endpoint          = "https://bedrock-agentcore-control.${local.effective_region}.${data.aws_partition.current.dns_suffix}"
     },
     var.description == null ? {} : { Description = var.description },
   )

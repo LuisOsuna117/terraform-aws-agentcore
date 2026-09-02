@@ -54,6 +54,7 @@ run "one_runtime_composes_only_its_opt_in_services" {
     create_gateway            = true
     create_memory             = true
     create_browser            = true
+    browser_signing_enabled   = true
     create_policy_engine      = true
     create_evaluations        = true
     create_gateway_connectors = true
@@ -115,6 +116,14 @@ run "one_runtime_composes_only_its_opt_in_services" {
   assert {
     condition     = contains(keys(output.policy_arns), "access") && contains(keys(output.policy_arns), "bounded")
     error_message = "Cedar and Dogwood policies must render against this invocation's Gateway."
+  }
+
+  assert {
+    condition = !contains(
+      keys(jsondecode(aws_cloudformation_stack.temporal_policy["bounded"].template_body).Resources.Policy.Properties),
+      "Description",
+    )
+    error_message = "An omitted temporal policy description must not render as a null CloudFormation property."
   }
 
   assert {

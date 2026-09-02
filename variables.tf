@@ -202,10 +202,21 @@ variable "runtime_authorizer_configuration" {
     })), [])
   })
   default = null
+
+  validation {
+    condition = var.runtime_authorizer_configuration == null ? true : (
+      length(var.runtime_authorizer_configuration.workload_identities) <= 10 &&
+      alltrue([
+        for identity in var.runtime_authorizer_configuration.workload_identities :
+        can(regex("^[A-Za-z0-9_.-]{3,255}$", identity))
+      ])
+    )
+    error_message = "runtime_authorizer_configuration.workload_identities must contain at most 10 workload identity names, not ARNs."
+  }
 }
 
 variable "runtime_trust_gateway_workload_identity" {
-  description = "When true, adds the workload identity of the Gateway created by this module call to the Runtime CUSTOM_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation."
+  description = "When true, adds the workload identity and hosting environment ARN of the Gateway created by this module call to the Runtime CUSTOM_JWT allowedWorkloadConfiguration. Use with JWT passthrough to prevent direct Runtime invocation."
   type        = bool
   default     = false
 }
@@ -247,13 +258,13 @@ variable "max_lifetime" {
 # ==============================================================================
 
 variable "server_protocol" {
-  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies."
+  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies."
   type        = string
   default     = null
 
   validation {
-    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
-    error_message = "server_protocol must be one of: HTTP, MCP, A2A."
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A", "AGUI"], var.server_protocol)
+    error_message = "server_protocol must be one of: HTTP, MCP, A2A, AGUI."
   }
 }
 
@@ -849,7 +860,7 @@ variable "gateway_runtime_target" {
         bucket_owner_account_id = optional(string)
       }))
     }))
-    credential_provider_configuration = optional(any, { gateway_iam_role = { service = "bedrock-agentcore" } })
+    credential_provider_configuration = optional(any, { gateway_iam_role = {} })
     metadata_configuration = optional(object({
       allowed_query_parameters = optional(set(string), [])
       allowed_request_headers  = optional(set(string), [])
@@ -1025,7 +1036,7 @@ variable "browser_description" {
 }
 
 variable "browser_execution_role_arn" {
-  description = "Optional Browser execution role ARN."
+  description = "Optional Browser execution role ARN. Defaults to the runtime execution role managed or supplied through execution_role_arn."
   type        = string
   default     = null
 }

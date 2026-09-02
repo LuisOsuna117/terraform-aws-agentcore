@@ -17,6 +17,9 @@ mock_provider "aws" {
       gateway_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gateway-a1b2c3d4e5"
       gateway_id  = "gateway-a1b2c3d4e5"
       gateway_url = "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com"
+      workload_identity_details = [{
+        workload_identity_arn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/gateway-a1b2c3d4e5"
+      }]
     }
   }
 
@@ -141,6 +144,26 @@ run "self_runtime_defaults_to_http_target" {
   }
 }
 
+run "self_agui_runtime_uses_general_gateway_target" {
+  command = plan
+
+  variables {
+    name                          = "self-agui-gateway"
+    create_build_pipeline         = false
+    create_runtime                = true
+    create_execution_role         = true
+    image_uri                     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/self-agui-gateway:test"
+    server_protocol               = "AGUI"
+    create_gateway                = true
+    gateway_attach_runtime_target = true
+  }
+
+  assert {
+    condition     = output.gateway_protocol_type == null && length(output.gateway_target_invocation_urls) == 1
+    error_message = "An AG-UI Runtime must use a direct HTTP Gateway target without MCP aggregation."
+  }
+}
+
 run "self_runtime_with_schema_uses_the_isolated_target" {
   command = apply
 
@@ -175,6 +198,24 @@ run "self_runtime_with_schema_uses_the_isolated_target" {
   assert {
     condition     = output.gateway_target_invocation_urls["runtime"] == "https://gateway-a1b2c3d4e5.gateway.bedrock-agentcore.us-east-1.amazonaws.com/SchemaRuntime/invocations"
     error_message = "The schema-bearing Runtime target must preserve the direct Gateway invocation URL."
+  }
+
+  assert {
+    condition = contains(
+      jsondecode(aws_iam_role_policy.gateway_runtime_invoke[0].policy).Statement[*].Sid,
+      "ObtainGatewayWorkloadToken",
+    )
+    error_message = "The schema-bearing self target must let its Gateway obtain a workload token."
+  }
+
+  assert {
+    condition = alltrue([
+      for statement in jsondecode(aws_iam_role_policy.gateway_runtime_invoke[0].policy).Statement :
+      anytrue([for resource in statement.Resource : endswith(resource, ":workload-identity-directory/default")]) &&
+      contains(statement.Resource, "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/gateway-a1b2c3d4e5")
+      if statement.Sid == "ObtainGatewayWorkloadToken"
+    ])
+    error_message = "The Gateway workload-token grant must include its directory and exact workload identity."
   }
 }
 

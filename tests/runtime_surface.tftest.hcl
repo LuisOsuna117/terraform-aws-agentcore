@@ -1,5 +1,25 @@
 mock_provider "aws" {}
 
+run "runtime_supports_agui" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    runtime_name       = "AgUiRuntime"
+    execution_role_arn = "arn:aws:iam::123456789012:role/runtime-role"
+    image_uri          = "123456789012.dkr.ecr.us-east-1.amazonaws.com/runtime:v1"
+    server_protocol    = "AGUI"
+  }
+
+  assert {
+    condition     = one(aws_bedrockagentcore_agent_runtime.this.protocol_configuration).server_protocol == "AGUI"
+    error_message = "Runtime must preserve the AG-UI server protocol."
+  }
+}
+
 run "runtime_supports_code_artifact_filesystems_and_tags" {
   command = plan
 
@@ -66,7 +86,7 @@ run "runtime_supports_advanced_jwt_authorizer" {
       allowed_audience         = ["runtime-api"]
       allowed_clients          = ["portal"]
       allowed_scopes           = ["openid"]
-      workload_identities      = ["arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/operator"]
+      workload_identities      = ["operator"]
       hosting_environment_arns = ["arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/operator-abcdefghij"]
       custom_claims = [{
         inbound_token_claim_name       = "cognito:groups"
@@ -86,4 +106,52 @@ run "runtime_supports_advanced_jwt_authorizer" {
     condition     = one(aws_bedrockagentcore_agent_runtime.this.authorizer_configuration[0].custom_jwt_authorizer[0].custom_claim).inbound_token_claim_value_type == "STRING_ARRAY"
     error_message = "Runtime must preserve STRING_ARRAY claims."
   }
+}
+
+run "runtime_omits_unconfigured_jwt_claim_restrictions" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    runtime_name       = "ClientOnlyRuntime"
+    execution_role_arn = "arn:aws:iam::123456789012:role/runtime-role"
+    image_uri          = "123456789012.dkr.ecr.us-east-1.amazonaws.com/runtime:v1"
+    authorizer_configuration = {
+      discovery_url   = "https://example.auth.us-east-1.amazoncognito.com/.well-known/openid-configuration"
+      allowed_clients = ["portal"]
+    }
+  }
+
+  assert {
+    condition = (
+      aws_bedrockagentcore_agent_runtime.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_audience == null &&
+      aws_bedrockagentcore_agent_runtime.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_scopes == null
+    )
+    error_message = "Unconfigured JWT restrictions must be omitted instead of sent as invalid empty arrays."
+  }
+}
+
+run "runtime_rejects_workload_identity_arns" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    runtime_name       = "InvalidWorkloadRuntime"
+    execution_role_arn = "arn:aws:iam::123456789012:role/runtime-role"
+    image_uri          = "123456789012.dkr.ecr.us-east-1.amazonaws.com/runtime:v1"
+    authorizer_configuration = {
+      discovery_url = "https://example.auth.us-east-1.amazoncognito.com/.well-known/openid-configuration"
+      workload_identities = [
+        "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/operator"
+      ]
+    }
+  }
+
+  expect_failures = [var.authorizer_configuration]
 }

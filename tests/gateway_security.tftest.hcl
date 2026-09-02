@@ -65,6 +65,32 @@ run "gateway_exposes_advanced_auth_policy_and_streaming" {
   }
 }
 
+run "gateway_omits_unconfigured_jwt_claim_restrictions" {
+  command = plan
+
+  module {
+    source = "./modules/gateway"
+  }
+
+  variables {
+    name            = "client-only-gateway"
+    authorizer_type = "CUSTOM_JWT"
+    authorizer_configuration = {
+      discovery_url   = "https://example.auth.us-east-1.amazoncognito.com/.well-known/openid-configuration"
+      allowed_clients = ["portal"]
+    }
+    protocol_type = "MCP"
+  }
+
+  assert {
+    condition = (
+      aws_bedrockagentcore_gateway.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_audience == null &&
+      aws_bedrockagentcore_gateway.this.authorizer_configuration[0].custom_jwt_authorizer[0].allowed_scopes == null
+    )
+    error_message = "Unconfigured JWT restrictions must be omitted instead of sent as invalid empty arrays."
+  }
+}
+
 run "gateway_created_role_gets_inferred_target_permissions" {
   command = plan
 

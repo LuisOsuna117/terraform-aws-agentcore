@@ -181,6 +181,17 @@ variable "authorizer_configuration" {
     ])
     error_message = "Each JWT private endpoint override must configure exactly one managed or self-managed VPC resource."
   }
+
+  validation {
+    condition = var.authorizer_configuration == null ? true : (
+      length(var.authorizer_configuration.workload_identities) <= 10 &&
+      alltrue([
+        for identity in var.authorizer_configuration.workload_identities :
+        can(regex("^[A-Za-z0-9_.-]{3,255}$", identity))
+      ])
+    )
+    error_message = "authorizer_configuration.workload_identities must contain at most 10 workload identity names, not ARNs."
+  }
 }
 
 # ==============================================================================
@@ -204,13 +215,13 @@ variable "max_lifetime" {
 # ==============================================================================
 
 variable "server_protocol" {
-  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A. When null, the service default (HTTP) applies."
+  description = "Server protocol for the runtime. Valid values: HTTP, MCP, A2A, AGUI. When null, the service default (HTTP) applies."
   type        = string
   default     = null
 
   validation {
-    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A"], var.server_protocol)
-    error_message = "server_protocol must be one of: HTTP, MCP, A2A."
+    condition     = var.server_protocol == null ? true : contains(["HTTP", "MCP", "A2A", "AGUI"], var.server_protocol)
+    error_message = "server_protocol must be one of: HTTP, MCP, A2A, AGUI."
   }
 }
 
