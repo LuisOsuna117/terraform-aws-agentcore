@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.4.0...v1.5.0) (2026-09-02)
+
+### 🚀 Features
+
+* **gateway:** support workload tokens for self runtime targets ([ad6150b](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/ad6150b237af40c33440e5c436debda35bef91e3))
+
+### 🐛 Bug Fixes
+
+* **auth:** omit empty JWT claim restrictions ([5827b31](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/5827b311e4866bed7fcfdba8a7a24766571d8834))
+* **browser:** default signing execution role ([963da06](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/963da06319d8486786d299f5bb217c5e22c8f22a))
+* **gateway:** manage connectors through signed control API ([9b6dbc2](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/9b6dbc2f69f90002895630b1319c7c5c3fb2dc8c))
+* **gateway:** omit runtime IAM provider details ([d14189e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/d14189e561d1cade485609c7c8dcf6bec0734dc8))
+* **gateway:** use native connector targets ([d2972a4](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/d2972a412f55299c11157ea8f666c444d9437373))
+* **policy:** omit null temporal descriptions ([c74ef0e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/c74ef0e81900efd4ebbe24ef57e43c3fda7cab95))
+* **policy:** support not-yet-created role principals ([af820f0](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/af820f0aebcfa3fd98e38fb7b74fbb8a9b60e605))
+* **runtime:** support AG-UI protocol [skip ci] ([bdf191e](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/bdf191eb43acd83ebae2e53be6678638871512cc))
+* **runtime:** trust gateway hosting environment ([a542c3d](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/a542c3dadfc1dda35dcb934be0229515f763cfae))
+* **runtime:** use workload identity names ([3e4372b](https://github.com/LuisOsuna117/terraform-aws-agentcore/commit/3e4372ba7091a30555c8f8d528ac025255107eb4))
+
 ## [1.4.0](https://github.com/LuisOsuna117/terraform-aws-agentcore/compare/v1.3.0...v1.4.0) (2026-08-30)
 
 ### 🚀 Features
